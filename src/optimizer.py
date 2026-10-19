@@ -8,7 +8,8 @@ c = the client's constraints: max_equity, min_bonds, max_other, max_crypto, max_
 """
 import numpy as np
 import pandas as pd
-from scipy.optimize import LinearConstraint, minimize
+from numbers import Real
+from scipy.optimize import LinearConstraint, linprog, minimize
 
 from src.data import ASSETS
 
@@ -66,14 +67,137 @@ def clean(x, tickers):
     return pd.Series(w / w.sum(), index=tickers)
 
 
+def _mv_coefficients(mu, cov, risk_aversion):
+    """Scale the SAME quadratic by a positive scalar; never regularize covariance.
+
+    The two stages avoid forming mu / risk_aversion or a potentially overflowing
+    scale factor in original units. Joint scaling of mu and cov cancels out.
+    Symmetrization preserves the quadratic form and its exact gradient.
+    """
+    if (not isinstance(risk_aversion, Real) or isinstance(risk_aversion, (bool, np.bool_))
+            or not np.isfinite(risk_aversion) or risk_aversion <= 0):
+        raise ValueError("Mean-variance risk_aversion must be finite and strictly positive.")
+    if not isinstance(mu, pd.Series) or not isinstance(cov, pd.DataFrame):
+        raise ValueError("Mean-variance expects a return Series and covariance DataFrame.")
+    if (mu.empty or not mu.index.is_unique or not cov.index.equals(mu.index)
+            or not cov.columns.equals(mu.index)):
+        raise ValueError("Mean-variance covariance rows/columns must match the unique return index in order.")
+    returns, sigma = mu.to_numpy(dtype=float), cov.to_numpy(dtype=float)
+    if not np.isfinite(returns).all() or not np.isfinite(sigma).all():
+        raise ValueError("Mean-variance returns and covariance must contain only finite numbers.")
+    data_scale = max(np.abs(returns).max(), np.abs(sigma).max())
+    if data_scale == 0:
+        data_scale = 1.0  # identically zero objective; every feasible point is optimal
+    returns, sigma = returns / data_scale, sigma / data_scale
+    cov_scale = np.abs(sigma).max()
+    if cov_scale > 0:
+        unit_cov = sigma / cov_scale
+        if np.max(np.abs(unit_cov-unit_cov.T)) > 1e-12:
+            raise ValueError("Mean-variance covariance must be symmetric.")
+        if np.linalg.eigvalsh(0.5*unit_cov + 0.5*unit_cov.T).min() < -1e-12:
+            raise ValueError("Mean-variance covariance must be positive semidefinite; no regularization is applied.")
+    sigma = 0.5*sigma + 0.5*sigma.T
+    if risk_aversion <= 1:
+        sigma = sigma * risk_aversion  # positive multiplier g / data_scale
+    else:
+        returns = returns / risk_aversion  # positive multiplier 1 / data_scale
+    coefficient_scale = max(np.abs(sigma).max(), np.abs(returns).max())
+    if coefficient_scale == 0:
+        if np.any(mu.to_numpy()) or np.any(cov.to_numpy()):
+            raise ValueError("Mean-variance input scale is too extreme for floating-point optimization.")
+        coefficient_scale = 1.0
+    return sigma / coefficient_scale, returns / coefficient_scale
+
+
+def _mv_linear_system(rules):
+    """Express the existing LinearConstraints for a feasibility LP."""
+    equality, eq_rhs, inequality, ineq_rhs = [], [], [], []
+    for rule in rules:
+        matrix = np.atleast_2d(rule.A)
+        lower = np.broadcast_to(rule.lb, (len(matrix),))
+        upper = np.broadcast_to(rule.ub, (len(matrix),))
+        for row, lo, hi in zip(matrix, lower, upper):
+            if lo == hi:
+                equality.append(row)
+                eq_rhs.append(lo)
+            else:
+                if np.isfinite(hi):
+                    inequality.append(row)
+                    ineq_rhs.append(hi)
+                if np.isfinite(lo):
+                    inequality.append(-row)
+                    ineq_rhs.append(-lo)
+    return dict(A_eq=np.array(equality) if equality else None,
+                b_eq=np.array(eq_rhs) if equality else None,
+                A_ub=np.array(inequality) if inequality else None,
+                b_ub=np.array(ineq_rhs) if inequality else None)
+
+
+def _mv_violation(weights, rules, bounds):
+    """Maximum absolute constraint violation, without modifying the weights."""
+    w = np.asarray(weights)
+    if w.shape != (len(bounds),) or not np.isfinite(w).all():
+        return np.inf
+    lower, upper = np.asarray(bounds).T
+    error = max(0.0, float(np.max(lower-w)), float(np.max(w-upper)))
+    for rule in rules:
+        value = np.atleast_2d(rule.A) @ w
+        error = max(error, float(np.max(rule.lb-value)), float(np.max(value-rule.ub)))
+    return error
+
+
+def _mv_feasible_start(n, rules, bounds):
+    """Deterministic initialization independent of mu/cov and their units."""
+    start = np.full(n, 1/n)
+    if _mv_violation(start, rules, bounds) <= 1e-12:
+        return start
+    feasible = linprog(np.zeros(n), bounds=bounds, method="highs",
+                       options={"primal_feasibility_tolerance": 1e-9,
+                                "dual_feasibility_tolerance": 1e-9},
+                       **_mv_linear_system(rules))
+    if not feasible.success:
+        if feasible.status == 2:
+            raise ValueError(f"Mean-variance constraints are infeasible: {feasible.message}")
+        raise RuntimeError(f"Mean-variance feasible initialization failed: {feasible.message}")
+    if _mv_violation(feasible.x, rules, bounds) > 1e-9:
+        raise RuntimeError("Mean-variance initialization did not produce a feasible portfolio.")
+    return feasible.x
+
+
 def mean_variance(mu, cov, risk_aversion, c):
-    """Markowitz portfolio of a client with this risk aversion (gamma from the questionnaire)."""
+    """Solve the original constrained MV problem with public risk aversion g.
+
+    Objective: 0.5*w'cov*w - w'mu/g, multiplied by a positive numerical scale.
+    Return raw, validated weights as a Series; never clip or renormalize a solve.
+    Numerical feasibility is checked to 1e-9 in portfolio-weight units.
+    """
+    sigma, returns = _mv_coefficients(mu, cov, risk_aversion)
     tickers = list(mu.index)
+    if any(t not in ASSETS for t in tickers):
+        raise ValueError("Mean-variance received an unknown asset ticker.")
+    for key in ("max_equity", "min_bonds", "max_other", "max_crypto", "max_weight_per_asset"):
+        value = c.get(key)
+        if (not isinstance(value, Real) or isinstance(value, (bool, np.bool_))
+                or not np.isfinite(value)):
+            raise ValueError(f"Mean-variance constraint {key} must be a finite number.")
+    if c["max_weight_per_asset"] < 0:
+        raise ValueError("Mean-variance per-asset upper bound makes the constraints infeasible.")
     n = len(tickers)
-    rules = [LinearConstraint(np.ones(n), lb=1, ub=1)] + client_constraints(tickers, c)  # 100% invested
-    res = minimize(QP, np.ones(n) / n, args=(cov.values, mu.values, 1 / risk_aversion),
-                   bounds=weight_bounds(tickers, c), constraints=rules, method="SLSQP")
-    return clean(res.x, tickers)
+    rules = [LinearConstraint(np.ones(n), lb=1, ub=1)] + client_constraints(tickers, c)
+    bounds = weight_bounds(tickers, c)
+    start = _mv_feasible_start(n, rules, bounds)
+    res = minimize(lambda w: 0.5*w @ sigma @ w - w @ returns, start,
+                   jac=lambda w: sigma @ w - returns,
+                   bounds=bounds, constraints=rules, method="SLSQP",
+                   options={"ftol": 1e-12, "maxiter": 2000})
+    if not res.success:
+        raise RuntimeError(f"Mean-variance SLSQP failed (status {res.status}): {res.message}")
+    violation = _mv_violation(res.x, rules, bounds)
+    if violation > 1e-9:
+        raise RuntimeError(f"Mean-variance returned invalid weights (maximum constraint violation {violation:.3g}).")
+    if not np.isfinite(0.5*res.x @ sigma @ res.x - res.x @ returns):
+        raise RuntimeError("Mean-variance returned a nonfinite objective value.")
+    return pd.Series(res.x, index=tickers)
 
 
 def mean_variance_with_costs(mu, cov, risk_aversion, c, x0, cost, max_turnover=2.0):

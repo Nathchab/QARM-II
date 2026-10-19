@@ -7,14 +7,36 @@ from src.data import ASSETS
 st.title("How it works")
 
 st.header("1. Your profile")
-st.write("Swiss law (FinSO Art. 17) asks for the client's **willingness** and **capacity** to take risk.")
+st.write("This academic portfolio optimization project keeps risk tolerance, financial capacity proxies and optional "
+         "preferences separate. It compares methods and financial reasoning; estimates are not guarantees.")
 st.markdown("""
-- **Willingness**: Holt-Laury (2002) lotteries. With CRRA utility, the row where you switch from A to B gives your
-  relative risk aversion γ.
-- **Capacity**: age, horizon, liquidity needs, income, maximum loss → a minimum γ and constraints.
-- **Final γ** = the more prudent (higher) of the two.
-- We **recommend** products and constraints for the profile. The client can change them (page 2): we only warn
-  when the choice is riskier than our recommendation (suitability check).
+- **Risk tolerance (RT)**: the arithmetic mean of QE1–QE4 in the QARM II questionnaire.
+  Experience (EX), knowledge (KN), horizon (HZ), sophistication (CX) and applicable conviction
+  confidence (CV) are separate scores; experience and knowledge do not increase RT.
+- **Capacity**: four questions cover age, income stability, emergency savings and commitments.
+  The research score is 0–9: 0–3 gives floor 12, 4–6 floor 6, and 7–9 floor 2.
+  Low savings or significant commitments impose a minimum-6 safeguard. This is not a monetary loss budget.
+- **Automatic provisional gamma**: gW = 5.56716 × (1.16315 / 5.56716)^((RT − 5) / 92.5).
+  Execution gamma = max(gW, existing capacity floor). The configurable anchors are illustrative
+  research assumptions, not empirically validated preferences or a guarantee of risk or losses.
+  Raw QD1/QD2 are stored alongside HZ and do not adjust gamma.
+- **Limited prototype scope**: questionnaire constraints, views and route candidates are recorded only. Actual portfolios
+  continue using the existing product/constraint choices and four methods. Holt-Laury remains legacy code.
+- **Allocation limits**: capacity and raw QD1/QD2 supply equity ceilings and bond minima; the most
+  restrictive limits apply. Product, Other and crypto caps remain. Optional edits can tighten limits.
+  Saved legacy policies require an explicit reviewed migration; their old restrictions are archived.
+- **Presentation**: Normal means valid weights and satisfied allocation limits. Information explains
+  a binding capacity floor or allocation limit. Investor financial/liquidity flags appear once, separately
+  from method validity. Warning method labels are reserved for calculation/data issues or disclosed fallbacks.
+  Full gamma precision, binding constraint identifiers and risk-contribution details are in **Advanced details**.
+- **Volatility**: an annual risk metric for comparing methods, not a pass/fail test against MV.
+  All valid methods remain visible even when they have different volatility. Financial/liquidity diagnostics remain recorded.
+- **Infeasibility**: a disclosed illustration may omit tighter optional settings or add default products,
+  while preserving mandatory limits. No reliable calculation means a diagnostic, never fabricated weights.
+- **Scope**: the categorical capacity score is a research assumption, not a quantified monetary loss budget.
+  No additional suitability framework or reserve mechanism is implemented.
+- **Risk Parity** has no gamma objective. It uses covariance and the same mandatory allocation limits;
+  gamma does not control its risk.
 """)
 
 st.header("2. Data")

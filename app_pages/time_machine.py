@@ -3,26 +3,43 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from src.app_helpers import get_benchmark, get_choices, get_currency, get_data, get_portfolios, get_profile, get_views
+from src.app_helpers import (get_benchmark, get_choices, get_currency, get_portfolio_context,
+                             get_profile, show_allocation_plan, show_portfolio_assessment, show_profile_notice)
 from src.portfolios import METHODS
 from src.time_machine import CRISES, crisis_summary, replay
+from src.questionnaire_definitions import QUESTIONS
 
 profile = get_profile()
-tickers, c = get_choices()
+tickers, c = get_choices(allow_infeasible=True, profile=profile)
 currency = get_currency()
-benchmark_name, benchmark = get_benchmark(tickers, c)
 
 st.title("⏳ Time machine")
 st.write("What if you had bought your portfolio just before a crisis? "
          "We buy it on the day the market was at its peak and hold it.")
 
-returns, rf, prices = get_data(currency)
-portfolios = get_portfolios(currency, tickers, profile.gamma, c, get_views())
+plan, assessments, mu, cov, returns, rf, prices = get_portfolio_context(profile, currency, tickers, c)
+show_allocation_plan(plan)
+show_profile_notice(profile, plan, assessments)
+if not plan.feasible:
+    st.stop()
+tickers, c = plan.tickers, plan.constraints
+benchmark_name, benchmark = get_benchmark(tickers, c)
+portfolios = {name: result.weights for name, result in assessments.items() if result.weights is not None}
+if not portfolios:
+    for result in assessments.values():
+        show_portfolio_assessment(result)
+    st.stop()
 portfolios["Benchmark"] = benchmark
 
 col1, col2, col3 = st.columns(3)
 crisis = col1.selectbox("Crisis", list(CRISES))
-method = col2.selectbox("Your portfolio", METHODS, index=METHODS.index(st.session_state.get("method", METHODS[0])))
+methods = [name for name in METHODS if name in portfolios]
+selected = st.session_state.get("method", methods[0])
+method = col2.selectbox("Your portfolio", methods, index=methods.index(selected) if selected in methods else 0)
+show_portfolio_assessment(assessments[method])
+st.caption("The status above describes today's calculated portfolio. The crisis replay illustrates historical losses; volatility is not a pass/fail criterion.")
+if method == "Risk parity (ERC)":
+    st.caption("Risk Parity does not use gamma; its risk is not controlled by gamma.")
 amount = col3.number_input(f"Amount invested ({currency})", min_value=1000, value=100_000, step=10_000)
 
 start, end, story = CRISES[crisis]
@@ -45,11 +62,17 @@ col1.metric("Worst loss", f"{loss:.1%}")
 col2.metric(f"Worst loss in {currency}", f"{loss * amount:,.0f}")
 col3.metric("Time to get your money back", "not yet" if months is None else f"{months} months")
 
-if loss < profile.max_loss:
+if profile.max_loss is None:
+    response = profile.questionnaire_answers["QE2"]
+    st.info("Your original QE2 willingness response: " + QUESTIONS["QE2"].options[response].text
+            + ". This temporary-loss comfort answer is not a financial loss-bearing limit; no crisis pass/fail is inferred from it.")
+elif loss < profile.max_loss:
     st.error(f"This portfolio lost {-loss:.1%}, more than the {-profile.max_loss:.0%} you told us you could accept. "
              "Would you have stayed invested? Maybe choose a more prudent profile or method.")
 else:
     st.success(f"This portfolio lost {-loss:.1%}, within the {-profile.max_loss:.0%} you told us you could accept.")
+st.caption("Historical replay and any legacy comfort-threshold comparison are descriptive. This is not an Alternative B "
+           "financial loss-budget screen or validation of mandatory suitability requirements.")
 
 missing = [t for t in portfolios[method].index if prices[t].loc[:start].isna().all()]
 if missing:
