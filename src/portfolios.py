@@ -2,6 +2,7 @@
 The four portfolios we offer to the client, and the benchmarks.
 Used by the app pages and by the backtest.
 """
+import numpy as np
 import pandas as pd
 
 from src.black_litterman import market_weights, posterior_returns
@@ -32,6 +33,25 @@ def build_portfolios(mu, cov, rf, gamma, c, views, n_sim=100):
         "Black-Litterman": mean_variance(posterior_returns(cov, rf, views), cov, gamma, c),
         "Risk parity (ERC)": risk_parity(cov, c),
     }
+
+
+def build_portfolios_safe(mu, cov, rf, gamma, c, views, n_sim=100):
+    """Same as build_portfolios, but one failing method does not hide the others.
+    Returns (weights of the methods that worked, error message of the methods that failed)."""
+    views = {t: v for t, v in views.items() if t in mu.index}
+    calls = {
+        "Mean-variance": lambda: mean_variance(mu, cov, gamma, c),
+        "Resampled MV": lambda: resampled(mu, cov, gamma, c, n_sim),
+        "Black-Litterman": lambda: mean_variance(posterior_returns(cov, rf, views), cov, gamma, c),
+        "Risk parity (ERC)": lambda: risk_parity(cov, c),
+    }
+    portfolios, errors = {}, {}
+    for name, compute in calls.items():
+        try:
+            portfolios[name] = compute()
+        except (ValueError, RuntimeError, np.linalg.LinAlgError) as error:
+            errors[name] = str(error)
+    return portfolios, errors
 
 
 def benchmark_weights(name, tickers, c):

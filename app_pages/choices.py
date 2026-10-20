@@ -1,26 +1,19 @@
-"""Page 2: the client picks the products and the constraints. We propose our recommendation."""
+"""Page 2: the client picks the products and can tighten the constraints of his profile."""
 import streamlit as st
 
-from src.app_helpers import get_profile, show_profile_notice
+from src.app_helpers import get_profile, show_profile_messages, tighten
 from src.data import ASSETS, available_assets, first_date
-from src.gamma_policy import effective_constraints
 from src.optimizer import check_constraints
 from src.portfolios import WINDOW
-from src.portfolio_policy import allocation_feasibility
 
 profile = get_profile()
 rec_assets = profile.recommended_assets
 rec_c = profile.recommended_constraints
 
 st.title("Your products and constraints")
-automatic = getattr(profile, "gamma_automatic", False)
-if automatic:
-    st.write("Products start from prototype defaults. Optional allocation preferences can tighten the "
-             "mandatory prototype limits. Requests to relax them are recorded but do not change the "
-             "limits used for execution. Feasibility does not establish financial suitability.")
-else:
-    st.write("Legacy mode permits allocation edits with warnings. These optional edits do not "
-             "establish that mandatory suitability requirements have been met.")
+st.write("We pre-selected **our recommendation** for your profile. You can choose other products, and you "
+         "can make the limits **stricter** than your profile, but not looser: they come from your financial "
+         "situation, horizon and liquidity needs.")
 
 if st.button("↩️ Back to our recommendation"):
     for key in ["assets", "constraints"] + [k for k in st.session_state if k.startswith("pick_")]:
@@ -28,7 +21,7 @@ if st.button("↩️ Back to our recommendation"):
     st.rerun()
 
 saved_assets = st.session_state.get("assets", rec_assets)
-saved_c = st.session_state.get("constraints", rec_c)
+saved_c = tighten(rec_c, st.session_state.get("constraints", {}))
 
 # ---------- Products ----------
 st.header("1. Products")
@@ -36,6 +29,9 @@ label = lambda t: f"{t} – {ASSETS[t][0]} (data since {first_date(t):%Y})"
 tickers = []
 for asset_class in ["Equity", "Bond", "Other", "Crypto"]:
     options = [t for t in available_assets() if ASSETS[t][1] == asset_class]
+    if asset_class == "Crypto" and rec_c["max_crypto"] == 0:
+        st.caption("Crypto: not allowed by your profile (maximum 0%).")
+        continue
     tickers += st.multiselect(asset_class, options, default=[t for t in saved_assets if t in options],
                               format_func=label, key=f"pick_{asset_class}")
 
@@ -49,63 +45,46 @@ if tickers:
     st.caption(f"The youngest product is {youngest} ({first_date(youngest):%B %Y}). We need {WINDOW} months "
                f"of history to estimate the inputs, so the backtest can start 5 years later.")
 
+
 # ---------- Constraints ----------
+def slider(column, label, key, low, high, value, step):
+    """Slider in % between low and high (a fixed value when the profile leaves no choice)."""
+    if low >= high:
+        column.write(f"{label}: **{low:.0%}** (set by your profile)")
+        return low
+    pct = column.slider(label + " (%)", int(round(low * 100)), int(round(high * 100)),
+                        int(round(value * 100)), step, key=f"pick_{key}")
+    return pct / 100
+
+
 st.header("2. Constraints")
 col1, col2 = st.columns(2)
-max_equity = col1.slider("Maximum in equities (%)", 0, 100, int(saved_c["max_equity"] * 100), 5,
-                         key="pick_max_equity", help=f"Recommended: {rec_c['max_equity']:.0%}")
-min_bonds = col2.slider("Minimum in bonds (%)", 0, 100, int(saved_c["min_bonds"] * 100), 5,
-                        key="pick_min_bonds", help=f"Recommended: {rec_c['min_bonds']:.0%}")
-max_other = col1.slider("Maximum in gold and commodities (%)", 0, 100, int(saved_c["max_other"] * 100), 5,
-                        key="pick_max_other", help=f"Recommended: {rec_c['max_other']:.0%}")
-max_crypto = col2.slider("Maximum in crypto (%)", 0, 30, int(saved_c["max_crypto"] * 100), 1,
-                         key="pick_max_crypto", help=f"Recommended: {rec_c['max_crypto']:.0%}")
-max_weight = col1.slider("Maximum per product (%)", 5, 100, int(saved_c["max_weight_per_asset"] * 100), 5,
-                         key="pick_max_weight", help=f"Recommended: {rec_c['max_weight_per_asset']:.0%}")
-
-c = {"max_equity": max_equity / 100, "min_bonds": min_bonds / 100, "max_other": max_other / 100,
-     "max_crypto": max_crypto / 100, "max_weight_per_asset": max_weight / 100}
+c = {
+    "max_equity": slider(col1, "Maximum in equities", "max_equity", 0, rec_c["max_equity"], saved_c["max_equity"], 5),
+    "min_bonds": slider(col2, "Minimum in bonds", "min_bonds", rec_c["min_bonds"], 1, saved_c["min_bonds"], 5),
+    "max_other": slider(col1, "Maximum in gold and commodities", "max_other", 0, rec_c["max_other"],
+                        saved_c["max_other"], 5),
+    "max_crypto": slider(col2, "Maximum in crypto", "max_crypto", 0, rec_c["max_crypto"], saved_c["max_crypto"], 1),
+    "max_weight_per_asset": slider(col1, "Maximum per product", "max_weight", 0.05, rec_c["max_weight_per_asset"],
+                                   saved_c["max_weight_per_asset"], 5),
+}
 
 # Save the choices for the next pages
 st.session_state["assets"] = tickers
 st.session_state["constraints"] = c
 
-# ---------- Explain optional requests separately from mandatory prototype limits ----------
-riskier = []
-if c["max_equity"] > rec_c["max_equity"]:
-    riskier.append(f"more equities than recommended ({c['max_equity']:.0%} instead of {rec_c['max_equity']:.0%})")
-if c["min_bonds"] < rec_c["min_bonds"]:
-    riskier.append(f"fewer bonds than recommended ({c['min_bonds']:.0%} instead of {rec_c['min_bonds']:.0%})")
-if c["max_weight_per_asset"] > rec_c["max_weight_per_asset"]:
-    riskier.append(f"less diversification ({c['max_weight_per_asset']:.0%} per product instead of "
-                   f"{rec_c['max_weight_per_asset']:.0%})")
-if c["max_other"] > rec_c["max_other"]:
-    riskier.append(f"more gold and commodities than recommended ({c['max_other']:.0%} instead of "
-                   f"{rec_c['max_other']:.0%})")
-if c["max_crypto"] > rec_c["max_crypto"]:
-    riskier.append(f"more crypto than recommended ({c['max_crypto']:.0%} instead of {rec_c['max_crypto']:.0%})")
-if riskier:
-    st.info("Your optional request relaxes the profile defaults: " + "; ".join(riskier) + ".")
-if automatic:
-    requested = c
-    c = effective_constraints(profile.mandatory_constraints, requested)
-    st.dataframe({"Limit": list(c),
-                  "Mandatory prototype limit": list(profile.mandatory_constraints.values()),
-                  "Optional request": [requested[key] for key in c],
-                  "Execution limit": list(c.values())}, hide_index=True)
-    if requested != c:
-        st.info("The relaxed requests above are not applied. Execution retains every mandatory prototype limit.")
+stricter = [label for key, label in [("max_equity", "equities"), ("min_bonds", "bonds"),
+                                      ("max_other", "gold and commodities"), ("max_crypto", "crypto"),
+                                      ("max_weight_per_asset", "maximum per product")] if c[key] != rec_c[key]]
+if stricter:
+    st.caption("Stricter than your profile: " + ", ".join(stricter) + ".")
 if any(ASSETS[t][1] == "Crypto" for t in tickers) and c["max_crypto"] == 0:
     st.info("You chose crypto products but your maximum in crypto is 0%: they will get no weight.")
 
-problems = allocation_feasibility(tickers, c).problems
-show_profile_notice(profile, extra_warnings=problems)
+show_profile_messages(profile)
+problems = check_constraints(tickers, c)
 for p in problems:
     st.error(p)
 if not problems:
-    st.success(f"{len(tickers)} products selected. Allocation limits are numerically feasible; "
-               "financial suitability has not been validated.")
-else:
-    st.info("The portfolio page will try a clearly labelled illustration using mandatory limits and available default products. "
-            "Your requested products and preferences will remain saved.")
-st.page_link("app_pages/portfolio.py", label="Next: see portfolio or simulation diagnostics", icon="➡️")
+    st.success(f"{len(tickers)} products selected. Your constraints are feasible.")
+    st.page_link("app_pages/portfolio.py", label="Next: see your portfolio", icon="➡️")

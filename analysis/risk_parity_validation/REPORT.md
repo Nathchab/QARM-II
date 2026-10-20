@@ -15,14 +15,12 @@ does not imply future price observations. The prior live session cache was not
 available, so bit-for-bit identity with that session cannot be certified. The
 frozen covariance and original questionnaire are retained for offline regression.
 
-Current limits: equity ≤20%, bonds ≥60%, Other ≤20%, per-product ≤40%, long-only
-and fully invested. RT 80 gives willingness gamma about 1.56417 and capacity 5/9
-gives final gamma 6. Capacity 5 alone supplies 40%/30% equity/bond limits: the
-supplied tighter limits depend on QD restrictions or optional requests. No missing
-questionnaire answers are inferred. Risk Parity does not use gamma.
+Tested limits: equity ≤20%, bonds ≥60%, Other ≤20%, per-product ≤40%, long-only
+and fully invested (a very prudent allocation box). Risk Parity does not use gamma,
+so only these limits and the covariance matter.
 
-The less-constrained comparison uses high capacity, long horizon and no expected
-withdrawals: equity ≤80%, bonds ≥0%, with the same Other/product caps.
+The less-constrained comparison uses equity ≤80%, bonds ≥0%, with the same
+Other/product caps.
 
 | Asset | Current weight | Risk share | Less-constrained weight | Risk share |
 | --- | ---: | ---: | ---: | ---: |
@@ -56,7 +54,7 @@ Current binding limits are full investment, equity 20%, bonds 60%, Other 20%
 and AGG 40%. Some are redundant: equity plus Other caps imply at least 60% bonds.
 TLT must supply at least 20% once AGG reaches its product cap. The less-constrained
 solution still binds Other at 20%. Removing limits for diagnosis only gives
-12.5% shares but requires about 30.69% Other, breaching the approved cap.
+12.5% shares but requires about 30.69% Other, breaching the cap.
 
 The original audit tried 68 start/derivative comparisons per profile/covariance:
 equal weights, production weights and 32 feasible LP-vertex mixtures, each with
@@ -67,20 +65,18 @@ successful solutions. Best successful constrained objective improvement was only
 0.0000264, with maximum weight change below 0.004 percentage points. This supports
 the result for this matrix, without claiming a general global-optimality proof.
 
-One existing limitation remains: `risk_parity` returns weights without exposing
-or checking `OptimizeResult.success`. Current cases converge; UI validation checks
-weights and allocations. No optimizer modification is included in the release
-cleanup. See [SLSQP documentation](https://docs.scipy.org/doc/scipy-1.15.1/reference/optimize.minimize-slsqp.html).
+`risk_parity` now raises an error when SLSQP does not report convergence, so a
+failed solve can no longer be shown as a portfolio. See the
+[SLSQP documentation](https://docs.scipy.org/doc/scipy-1.15.1/reference/optimize.minimize-slsqp.html).
 
 ## Regressions and scope
 
 Run `python -m unittest discover -s tests -v`. The five focused ERC tests check
 Euler normalization/scaling, constrained feasibility and binding bounds, alternate
 initialization, the less-constrained case and exact-ERC infeasibility under the
-Other cap. Offline UI tests cover consolidated warnings, independent method
-validity, Advanced details and retained charts.
+Other cap.
 
 The full prior audit scripts, price downloads, manifests and output tables are in
 the verified local pre-release backup, not required for the main application or
 these tests. Live data/network access and unfinished-month estimation should be
-checked on the demonstration machine. See the [current policy](../../FINANCIAL_POLICY_IMPLEMENTATION.md).
+checked on the demonstration machine.

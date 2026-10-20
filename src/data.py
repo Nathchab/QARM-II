@@ -35,9 +35,6 @@ ASSETS = {
     "BTC-USD": ("Bitcoin", "Crypto"),
     "ETH-USD": ("Ethereum", "Crypto"),
 }
-# Our standard proposal: a diversified multi-asset portfolio
-RECOMMENDED = ["SPY", "EFA", "EEM", "VNQ", "AGG", "TLT", "GLD", "DBC"]
-RECOMMENDED_CRYPTO = ["BTC-USD"]
 
 FX = "CHF=X"   # number of CHF for 1 USD
 RF = "^IRX"    # 13-week US Treasury bill yield, in % per year

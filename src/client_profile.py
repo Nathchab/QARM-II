@@ -1,203 +1,178 @@
-from copy import deepcopy
+"""
+Investor profile: risk aversion gamma and allocation limits.
 
-from src.data import RECOMMENDED, RECOMMENDED_CRYPTO
-from src.gamma_policy import DEFAULT_RESEARCH_MAPPING, gamma_binding_explanation
-from src.financial_capacity import (FINANCIAL_FIELDS, POLICY_VERSION, allocation_limits,
-                                    assess_capacity, review_flags)
-from src.questionnaire_routing import portfolio_routes
-from src.questionnaire_scoring import dimension_labels, finite_number, illustrative_risk_matches, score_answers
+Two separate dimensions, each with its own job:
 
-_AUTOMATIC_GAMMA = object()
+1. Risk TOLERANCE (willingness, QE1-QE4) -> gamma, the risk aversion used by the optimisers.
+       gamma(RT) = GAMMA_MAX * (GAMMA_MIN / GAMMA_MAX) ** (RT / 100)
+   The anchors are calibrated on QE3: with the mean-variance utility U = mu - gamma/2 * sigma^2
+   of our optimiser, each QE3 option reveals an interval of gamma (see qe3_gamma_interval), and
+   gamma(RT) evaluated at the RT subscore of each option lies inside the interval of that option.
 
+2. Risk CAPACITY (ability: financial situation + horizon + liquidity) -> allocation limits
+   (maximum in equities, minimum in bonds, maximum in gold/commodities and crypto).
+   The most restrictive source applies. Capacity does NOT change gamma: it would be counted
+   twice (gamma floor + limits), and the client's tolerance would no longer matter.
+
+Result: a tolerant client with a low capacity gets the most dynamic portfolio *inside* the
+limits that his situation allows. The limits are a "box", gamma chooses the point in the box.
+"""
+from dataclasses import dataclass, field
+
+from src.data import ASSETS
+from src.optimizer import check_constraints
+from src.questionnaire import (CRYPTO_CAP, CRYPTO_CHOICE, HORIZON, QE2_MAX_LOSS, QE3_PROFILES, UNIVERSE,
+                               capacity_score, missing_answers, risk_tolerance_score, rt_label)
+
+GAMMA_MAX = 12.0  # gamma at RT = 0 (very risk averse)
+GAMMA_MIN = 1.0   # gamma at RT = 100 (very risk tolerant)
+
+MAX_WEIGHT_PER_ASSET = 0.40
+# Capacity tiers: (name, max equity, min bonds, max gold/commodities, max crypto)
+CAPACITY_TIERS = [
+    (2, ("Low", 0.30, 0.50, 0.10, 0.00)),
+    (4, ("Limited", 0.50, 0.30, 0.15, 0.00)),
+    (6, ("Moderate", 0.70, 0.15, 0.20, 0.05)),
+    (9, ("High", 1.00, 0.00, 0.20, 0.10)),
+]
+# Products added (in this order) when the selected asset classes cannot satisfy the limits
+FILLERS = ["AGG", "SHY", "SPY", "EFA", "GLD"]
+
+
+def gamma_from_rt(rt):
+    """Exponential interpolation between GAMMA_MAX (RT = 0) and GAMMA_MIN (RT = 100)."""
+    if not 0 <= rt <= 100:
+        raise ValueError("RT must be between 0 and 100.")
+    return GAMMA_MAX * (GAMMA_MIN / GAMMA_MAX) ** (rt / 100)
+
+
+def indifference_gamma(option_1, option_2):
+    """Gamma at which mu1 - gamma/2 sigma1^2 = mu2 - gamma/2 sigma2^2."""
+    (m1, s1), (m2, s2) = QE3_PROFILES[option_1], QE3_PROFILES[option_2]
+    return 2 * (m2 - m1) / (s2 ** 2 - s1 ** 2)
+
+
+def qe3_gamma_interval(choice):
+    """Interval of gamma for which `choice` is the best QE3 option (mean-variance utility)."""
+    letters = sorted(QE3_PROFILES)
+    i = letters.index(choice)
+    upper = indifference_gamma(letters[i - 1], choice) if i > 0 else float("inf")
+    lower = indifference_gamma(choice, letters[i + 1]) if i < len(letters) - 1 else 0.0
+    return lower, upper
+
+
+def capacity_tier(score, answers):
+    """Tier from the capacity score; low savings or heavy commitments cap the tier at 'Limited'.
+    Returns (tier, True if this safeguard lowered the tier)."""
+    tier = next(values for top, values in CAPACITY_TIERS if score <= top)
+    fragile = answers["savings"] == "a" or answers["commitments"] == "c"
+    if fragile and tier[0] in ("Moderate", "High"):
+        return CAPACITY_TIERS[1][1], True
+    return tier, False
+
+
+@dataclass
 class ClientProfile:
-    """
-    Legacy construction combines:
-      - risk willingness: gamma from the Holt-Laury questionnaire
-      - risk capacity: factual questions -> minimum gamma + RECOMMENDED portfolio constraints
-    Final gamma = the more conservative (higher) of the two.
-    The client can then change the recommended products and constraints (page "Your choices").
-    from_questionnaire automatically maps RT using provisional research anchors.
-    Explicit baseline calls remain available for legacy compatibility.
-    """
-
-    # Answer -> capacity points (more points = can afford more risk)
-    AGE = {"Under 30": 3, "30-45": 2, "46-60": 1, "Over 60": 0}
-    HORIZON = {"Less than 3 years": 0, "3-7 years": 1, "7-15 years": 2, "More than 15 years": 3}
-    NEEDS_MONEY = {"Yes": 0, "No": 2}
-    INCOME = {"No regular income": 0, "Fairly stable": 1, "Very stable": 2}
-    MAX_LOSS = {"-5%": 0, "-10%": 1, "-20%": 2, "-30% or more": 3}
-
-    # Constraints linked to some answers
-    MAX_EQUITY_HORIZON = {"Less than 3 years": 0.3, "3-7 years": 0.6, "7-15 years": 0.8, "More than 15 years": 1.0}
-    MAX_EQUITY_LOSS = {"-5%": 0.2, "-10%": 0.4, "-20%": 0.7, "-30% or more": 1.0}
-
-    MAX_WEIGHT_PER_ASSET = 0.4
-    MAX_CRYPTO = 0.10  # maximum in crypto for a client who wants crypto
-    MAX_OTHER = 0.20   # maximum in gold and commodities (volatile, no income)
-
-    # Largest acceptable one-year loss, as a number (used by the time machine)
-    MAX_LOSS_VALUE = {"-5%": -0.05, "-10%": -0.10, "-20%": -0.20, "-30% or more": -0.30}
-
-    def __init__(self, gamma_willingness, age, horizon, needs_money, income, max_loss, crypto):
-        if not finite_number(gamma_willingness, 0) or gamma_willingness == 0:
-            raise ValueError("Optimization gamma must be finite and strictly positive.")
-        self.gamma_willingness = gamma_willingness
-        self.max_loss = self.MAX_LOSS_VALUE[max_loss]
-
-        # Risk capacity score (0 to 13)
-        self.capacity_score = (self.AGE[age] + self.HORIZON[horizon] + self.NEEDS_MONEY[needs_money]
-                               + self.INCOME[income] + self.MAX_LOSS[max_loss])
-        self.gamma_capacity = self.gamma_from_capacity(self.capacity_score)
-
-        # Final gamma: the more conservative of willingness and capacity
-        self.gamma = max(self.gamma_willingness, self.gamma_capacity)
-        self.label = self.profile_label(self.gamma)
-
-        # Our recommendation (the client can change it)
-        self.recommended_constraints = {
-            "max_equity": min(self.MAX_EQUITY_HORIZON[horizon], self.MAX_EQUITY_LOSS[max_loss]),
-            "min_bonds": 0.3 if needs_money == "Yes" else 0.0,
-            "max_weight_per_asset": self.MAX_WEIGHT_PER_ASSET,
-            "max_other": self.MAX_OTHER,
-            "max_crypto": self.MAX_CRYPTO if crypto == "Yes" else 0.0,
-        }
-        self.recommended_assets = RECOMMENDED + (RECOMMENDED_CRYPTO if crypto == "Yes" else [])
-
-        self.optimization_gamma = self.gamma
-        self.optimization_gamma_input = gamma_willingness
-        self.gamma_provisional = False
-        self.gamma_source = "Legacy willingness gamma with existing financial-capacity floor"
-        self.capacity_answers = dict(age=age, horizon=horizon, needs_money=needs_money,
-                                     income=income, max_loss=max_loss, crypto=crypto)
+    answers: dict
+    rt: float = 0.0
+    gamma: float = 0.0
+    label: str = ""
+    capacity_score: int = 0
+    capacity_label: str = ""
+    recommended_constraints: dict = field(default_factory=dict)
+    recommended_assets: list = field(default_factory=list)
+    limit_sources: dict = field(default_factory=dict)  # which answer sets each limit
+    warnings: list = field(default_factory=list)        # material financial facts
+    notes: list = field(default_factory=list)           # neutral explanations
+    max_loss: float | None = None                        # QE2, used by the time machine
+    safeguard: bool = False                              # tier lowered by low savings / commitments
+    crypto_blocked: bool = False                         # crypto wanted but not allowed
+    added_assets: list = field(default_factory=list)     # products added to make the limits feasible
 
     @classmethod
-    def from_questionnaire(cls, answers, capacity_answers, optimization_gamma=_AUTOMATIC_GAMMA,
-                           *, gamma_mapping=DEFAULT_RESEARCH_MAPPING):
-        """Accept the new four-field schema or unchanged legacy capacity inputs.
+    def from_answers(cls, answers):
+        missing = missing_answers(answers)
+        if missing:
+            raise ValueError("Please answer: " + ", ".join(missing))
+        p = cls(dict(answers))
+        p.rt = risk_tolerance_score(answers)
+        p.gamma = gamma_from_rt(p.rt)
+        p.label = rt_label(p.rt)
+        p.max_loss = QE2_MAX_LOSS[answers["QE2"]]
+        p._set_limits()
+        p._set_assets()
+        p._set_messages()
+        return p
 
-        Scores and raw horizon/withdrawal answers remain independent. HZ, EX, KN,
-        CX and CV never adjust gamma or the unchanged capacity-point calculation.
-        gamma_mapping configures provisional research anchors, not investor edits.
-        """
-        if isinstance(capacity_answers, dict) and any(key in capacity_answers for key in ("emergency_savings", "commitments")):
-            if optimization_gamma is not _AUTOMATIC_GAMMA:
-                raise ValueError("The four-question research policy uses automatic willingness gamma, not an explicit baseline.")
-            return cls.from_financial_questionnaire(answers, capacity_answers, gamma_mapping=gamma_mapping)
-        result = score_answers(answers)
-        if not isinstance(capacity_answers, dict):
-            raise ValueError("Financial-capacity answers must be a dictionary.")
-        expected = {"age": cls.AGE, "horizon": cls.HORIZON, "needs_money": cls.NEEDS_MONEY,
-                    "income": cls.INCOME, "max_loss": cls.MAX_LOSS}
-        for key, choices in expected.items():
-            value = capacity_answers.get(key)
-            if not isinstance(value, str) or value not in choices:
-                raise ValueError(f"Complete the legacy financial-capacity question: {key}.")
-        crypto = "Yes" if "h" in answers["QF1"] else "No"
-        automatic = optimization_gamma is _AUTOMATIC_GAMMA
-        if automatic:
-            optimization_gamma = gamma_mapping.willingness_gamma(result.scores["RT"])
-        profile = cls(optimization_gamma, **{key: capacity_answers[key] for key in expected}, crypto=crypto)
-        cls._attach_questionnaire(profile, answers, result)
-        profile.gamma_provisional = True
-        profile.gamma_automatic = automatic
-        profile.gamma_source = ("Provisional research exponential RT mapping + legacy capacity floor" if automatic
-                                else "Legacy explicit provisional baseline + legacy capacity floor; no RT mapping")
-        profile.gamma_mapping_assumptions = gamma_mapping if automatic else None
-        profile.gamma_binding_explanation = gamma_binding_explanation(profile.gamma_willingness,
-                                                                     profile.gamma_capacity)
-        profile.mandatory_constraints = deepcopy(profile.recommended_constraints) if automatic else {}
-        profile.suitability_status = "research_prototype_not_validated"
-        return profile
-
-    @classmethod
-    def from_financial_questionnaire(cls, answers, capacity_answers, *, gamma_mapping=DEFAULT_RESEARCH_MAPPING):
-        """V2 research policy. The legacy constructor/factory remain numerically unchanged."""
-        result = score_answers(answers)
-        assessment = assess_capacity(capacity_answers)
-        limits, sources = allocation_limits(assessment.floor, answers["QD1"], answers["QD2"])
-        # Do not synthesize old horizon or acceptable-loss answers to call __init__.
-        profile = cls.__new__(cls)
-        profile.capacity_policy_version = POLICY_VERSION
-        profile.capacity_answers = {key: deepcopy(capacity_answers[key]) for key in FINANCIAL_FIELDS}
-        profile.capacity_score = assessment.score
-        profile.capacity_score_max = 9
-        profile.capacity_subscores = assessment.points
-        profile.gamma_capacity_base = assessment.base_floor
-        profile.capacity_safeguards = assessment.safeguards
-        profile.gamma_capacity = assessment.floor
-        profile.gamma_willingness = gamma_mapping.willingness_gamma(result.scores["RT"])
-        profile.gamma = max(profile.gamma_willingness, profile.gamma_capacity)
-        profile.optimization_gamma = profile.gamma
-        profile.optimization_gamma_input = profile.gamma_willingness
-        profile.label = cls.profile_label(profile.gamma)
-        crypto = "h" in answers["QF1"]
-        profile.recommended_constraints = dict(limits, max_weight_per_asset=cls.MAX_WEIGHT_PER_ASSET,
-                                              max_other=cls.MAX_OTHER, max_crypto=cls.MAX_CRYPTO if crypto else 0.)
-        profile.mandatory_constraints = deepcopy(profile.recommended_constraints)
-        profile.recommended_assets = RECOMMENDED + (RECOMMENDED_CRYPTO if crypto else [])
-        profile.allocation_limit_sources = sources
-        profile.financial_review_flags = review_flags(profile.capacity_answers, answers["QD1"], answers["QD2"])
-        profile.max_loss = None  # QE2 is willingness, not a replacement financial loss limit.
-        profile.gamma_automatic = True
-        profile.gamma_provisional = True
-        profile.gamma_source = "Provisional exponential RT mapping + approved four-question research capacity floor"
-        profile.gamma_mapping_assumptions = gamma_mapping
-        profile.gamma_binding_explanation = gamma_binding_explanation(profile.gamma_willingness, profile.gamma_capacity)
-        profile.suitability_status = "research_prototype_not_validated"
-        cls._attach_questionnaire(profile, answers, result)
-        return profile
-
-    @staticmethod
-    def _attach_questionnaire(profile, answers, result):
-        """Common original score/routing metadata, without changing score methodology."""
-        profile.questionnaire_version = "QARM-II-stage-1"
-        profile.questionnaire_answers = deepcopy(answers)
-        profile.scores = result.scores
-        profile.score_subscores = result.subscores
-        profile.applicable_questions = result.applicable
-        for dimension, value in result.scores.items():
-            setattr(profile, dimension.lower(), value)
-        profile.dimension_labels = dimension_labels(result.scores)
-        profile.risk_classification = profile.dimension_labels["RT"]
-        profile.illustrative_risk_matches = illustrative_risk_matches(result.scores)
-        profile.portfolio_routes = portfolio_routes(answers, result.scores)
-        profile.optimization_label = profile.label
-        profile.label = profile.risk_classification
-        profile.raw_horizon_answers = {code: deepcopy(answers[code]) for code in ("QD1", "QD2")}
-        # A conservative prototype policy boundary. Optional requests are stored
-        # separately and can only tighten these limits in the automatic app flow.
-        profile.requested_portfolio_settings = {
-            code: deepcopy(answers[code]) for code in result.applicable
-            if code.startswith(("QF", "QG", "QH", "QI", "QJ")) and code in answers
+    # ---------- allocation limits ----------
+    def _set_limits(self):
+        a = self.answers
+        self.capacity_score = capacity_score(a)
+        (self.capacity_label, cap_equity, cap_bonds, max_other, cap_crypto), self.safeguard = \
+            capacity_tier(self.capacity_score, a)
+        sources = {
+            f"financial capacity ({self.capacity_label})": (cap_equity, cap_bonds),
+            "your horizon (QD1)": HORIZON["QD1"][1][a["QD1"]][1],
+            "possible withdrawals (QD2)": HORIZON["QD2"][1][a["QD2"]][1],
         }
-        profile.requested_portfolio_settings.update({
-            key: deepcopy(value) for key, value in answers.items()
-            if "_" in key and key.split("_", 1)[0] in result.applicable
-        })
-        profile.portfolio_settings_applied = False
+        max_equity = min(v[0] for v in sources.values())
+        min_bonds = max(v[1] for v in sources.values())
+        wants_crypto = CRYPTO_CHOICE in a["QF1"]
+        if a["QD1"] not in ("d", "e") or a["QD2"] not in ("d", "e"):
+            cap_crypto = 0.0  # no crypto for money needed within 5 years or likely to be withdrawn
+        max_crypto = min(cap_crypto, CRYPTO_CAP[1][a["QF2"]][1]) if wants_crypto else 0.0
+        self.recommended_constraints = {"max_equity": max_equity, "min_bonds": min_bonds,
+                                        "max_other": max_other, "max_crypto": max_crypto,
+                                        "max_weight_per_asset": MAX_WEIGHT_PER_ASSET}
+        self.limit_sources = {
+            "max_equity": [name for name, v in sources.items() if v[0] == max_equity],
+            "min_bonds": [name for name, v in sources.items() if v[1] == min_bonds] if min_bonds > 0 else [],
+        }
+        self.crypto_blocked = wants_crypto and cap_crypto == 0
 
-    def policy_snapshot(self):
-        """Archive factual policy inputs/limits, never reinterpret an old score."""
-        fields = ("capacity_answers", "capacity_score", "gamma_capacity", "gamma_willingness", "gamma",
-                  "recommended_constraints", "mandatory_constraints", "recommended_assets", "max_loss",
-                  "questionnaire_answers", "scores")
-        result = {key: deepcopy(getattr(self, key)) for key in fields if hasattr(self, key)}
-        result["capacity_policy_version"] = getattr(self, "capacity_policy_version", "legacy-capacity-0-13")
-        return result
+    # ---------- products ----------
+    def _set_assets(self):
+        tickers = [t for choice in self.answers["QF1"] for t in UNIVERSE[1][choice][1] if t in ASSETS]
+        if self.recommended_constraints["max_crypto"] == 0:
+            tickers = [t for t in tickers if ASSETS[t][1] != "Crypto"]
+        for filler in FILLERS:
+            if not check_constraints(tickers, self.recommended_constraints):
+                break
+            if filler not in tickers:
+                tickers.append(filler)
+                self.added_assets.append(filler)
+        self.recommended_assets = tickers
 
-    @staticmethod
-    def gamma_from_capacity(score):
-        """Low capacity -> the client must be treated as at least this risk averse."""
-        if score <= 4:
-            return 12.0
-        if score <= 8:
-            return 6.0
-        return 2.0
-
-    @staticmethod
-    def profile_label(gamma):
-        if gamma <= 4:
-            return "Aggressive"
-        if gamma <= 9:
-            return "Balanced"
-        return "Conservative"
+    # ---------- messages ----------
+    def _set_messages(self):
+        a, c = self.answers, self.recommended_constraints
+        if a["savings"] == "a":
+            self.warnings.append("Your emergency savings cover less than 3 months of expenses: "
+                                 "build a cash reserve before taking market risk.")
+        if a["commitments"] == "c":
+            self.warnings.append("You have significant obligations or financial difficulties: "
+                                 "losses on this portfolio could be hard to absorb.")
+        if a["QD1"] == "a":
+            self.warnings.append("You need a large part of this money within 1 year: "
+                                 "risky assets are not suitable for money needed so soon.")
+        if a["QD2"] in ("a", "b"):
+            self.warnings.append("You may withdraw more than 25% within 12 months: "
+                                 "keep that amount in cash outside the portfolio.")
+        if self.safeguard:
+            self.notes.append("Because of low savings or heavy commitments, your capacity is treated as "
+                              "'Limited' at most.")
+        if self.rt > 50 and c["max_equity"] <= 0.5:
+            self.notes.append(f"Your risk tolerance ({self.label}) is higher than what your situation allows: "
+                              f"equities are limited to {c['max_equity']:.0%} by "
+                              f"{' and '.join(self.limit_sources['max_equity'])}. Within this limit, the "
+                              "portfolio still follows your tolerance.")
+        if self.crypto_blocked:
+            self.notes.append("You selected crypto, but your financial capacity or your horizon does not allow it: "
+                              "crypto is set to 0%.")
+        if self.added_assets:
+            self.notes.append("To respect your limits we added: " + ", ".join(
+                f"{t} ({ASSETS[t][0]})" for t in self.added_assets) + ".")
+        low, high = qe3_gamma_interval(a["QE3"])
+        if not low <= self.gamma <= high:
+            self.notes.append(f"Your answers are not fully consistent: your QE3 choice alone implies "
+                              f"γ between {low:.1f} and {high:.1f}, your four answers together give γ = {self.gamma:.1f}.")

@@ -17,6 +17,10 @@ MARKET_WEIGHTS = {"SPY": 25, "QQQ": 5, "IWM": 2, "EFA": 10, "VGK": 4, "EWL": 1, 
 DELTA = 2.5  # risk aversion of the average investor (He & Litterman 1999)
 TAU = 0.05   # uncertainty of the prior (small: the prior is quite reliable)
 
+# QH6 of the questionnaire: confidence in a view -> c in Omega = tau * sigma^2 * (1 - c) / c
+#   Low: 4x the prior uncertainty, Medium: same as the prior, High: 1/4, Very high: about 1/19
+CONFIDENCE_LEVELS = {"Low": 0.2, "Medium": 0.5, "High": 0.8, "Very high / research-backed": 0.95}
+
 
 def market_weights(tickers):
     w = pd.Series({t: MARKET_WEIGHTS[t] for t in tickers})
