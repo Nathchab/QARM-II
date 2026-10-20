@@ -1,42 +1,38 @@
-"""Page 5: short explanation of the methods, data and limitations (useful for questions)."""
+"""Page 6: short explanation of the methods, data and limitations (useful for questions)."""
 import streamlit as st
 
-from src.black_litterman import DELTA, TAU
+from src.black_litterman import CONFIDENCE_LEVELS, DELTA, TAU
+from src.client_profile import GAMMA_MAX, GAMMA_MIN
 from src.data import ASSETS
 
 st.title("How it works")
 
 st.header("1. Your profile")
-st.write("This academic portfolio optimization project keeps risk tolerance, financial capacity proxies and optional "
-         "preferences separate. It compares methods and financial reasoning; estimates are not guarantees.")
+st.write("The questionnaire (QARM II questionnaire, sections D, E and F) measures two different things, "
+         "and each one has its own job in the portfolio.")
 st.markdown("""
-- **Risk tolerance (RT)**: the arithmetic mean of QE1–QE4 in the QARM II questionnaire.
-  Experience (EX), knowledge (KN), horizon (HZ), sophistication (CX) and applicable conviction
-  confidence (CV) are separate scores; experience and knowledge do not increase RT.
-- **Capacity**: four questions cover age, income stability, emergency savings and commitments.
-  The research score is 0–9: 0–3 gives floor 12, 4–6 floor 6, and 7–9 floor 2.
-  Low savings or significant commitments impose a minimum-6 safeguard. This is not a monetary loss budget.
-- **Automatic provisional gamma**: gW = 5.56716 × (1.16315 / 5.56716)^((RT − 5) / 92.5).
-  Execution gamma = max(gW, existing capacity floor). The configurable anchors are illustrative
-  research assumptions, not empirically validated preferences or a guarantee of risk or losses.
-  Raw QD1/QD2 are stored alongside HZ and do not adjust gamma.
-- **Limited prototype scope**: questionnaire constraints, views and route candidates are recorded only. Actual portfolios
-  continue using the existing product/constraint choices and four methods. Holt-Laury remains legacy code.
-- **Allocation limits**: capacity and raw QD1/QD2 supply equity ceilings and bond minima; the most
-  restrictive limits apply. Product, Other and crypto caps remain. Optional edits can tighten limits.
-  Saved legacy policies require an explicit reviewed migration; their old restrictions are archived.
-- **Presentation**: Normal means valid weights and satisfied allocation limits. Information explains
-  a binding capacity floor or allocation limit. Investor financial/liquidity flags appear once, separately
-  from method validity. Warning method labels are reserved for calculation/data issues or disclosed fallbacks.
-  Full gamma precision, binding constraint identifiers and risk-contribution details are in **Advanced details**.
-- **Volatility**: an annual risk metric for comparing methods, not a pass/fail test against MV.
-  All valid methods remain visible even when they have different volatility. Financial/liquidity diagnostics remain recorded.
-- **Infeasibility**: a disclosed illustration may omit tighter optional settings or add default products,
-  while preserving mandatory limits. No reliable calculation means a diagnostic, never fabricated weights.
-- **Scope**: the categorical capacity score is a research assumption, not a quantified monetary loss budget.
-  No additional suitability framework or reserve mechanism is implemented.
-- **Risk Parity** has no gamma objective. It uses covariance and the same mandatory allocation limits;
-  gamma does not control its risk.
+- **Risk tolerance → γ.** RT is the average of the four answers of part 1 (QE1–QE4, each scored 0–100).
+  It is converted into the risk aversion of the mean-variance optimiser:
+""")
+st.latex(rf"\gamma(RT) = {GAMMA_MAX:g}\times\left(\tfrac{{{GAMMA_MIN:g}}}{{{GAMMA_MAX:g}}}\right)^{{RT/100}}")
+st.markdown("""
+  The anchors are calibrated on QE3: with the utility U = μ − γ/2·σ², the client is indifferent between
+  two options when γ = 2(μ₂ − μ₁)/(σ₂² − σ₁²). The four QE3 profiles give the thresholds 8, 2.67 and 1.6,
+  and γ evaluated at the RT score of each answer falls inside the interval this answer reveals.
+- **Risk capacity → allocation limits.** Age, income stability, emergency savings and commitments give a
+  score from 0 to 9 (Low 0–2, Limited 3–4, Moderate 5–6, High 7–9). Low savings or heavy commitments cap the
+  capacity at Limited. Each tier gives a maximum in equities, a minimum in bonds, and maximums in gold/commodities
+  and crypto. The horizon (QD1) and the possible withdrawals (QD2) give their own equity maximum and bond minimum.
+  **The most restrictive source applies.** The client can tighten these limits, never relax them.
+- **Why capacity does not change γ.** If capacity also raised γ, it would be counted twice (limits *and* a γ
+  floor), and for most clients the risk tolerance would no longer change anything. Here a tolerant client with
+  a low capacity gets the most dynamic portfolio *inside* the limits his situation allows.
+- **Warnings** are kept for material facts only: emergency savings below 3 months, significant commitments,
+  money needed within a year, or likely withdrawals above 25%.
+- **Products.** The asset classes chosen in QF1 give the recommended products; crypto (QF2) is also capped by
+  capacity. If the chosen classes cannot satisfy the limits (for example no bond product but a bond minimum), we
+  add the missing products and say so.
+- **Risk parity** does not use γ: only the covariance and the allocation limits.
 """)
 
 st.header("2. Data")
@@ -63,7 +59,9 @@ st.latex(r"\mu_{BL} = \left[(\tau\Sigma)^{-1} + P^\top \Omega^{-1} P\right]^{-1}
          r"\left[(\tau\Sigma)^{-1}\pi + P^\top \Omega^{-1} Q\right]")
 st.write(f"π: equilibrium returns of the world market portfolio (δ = {DELTA}, τ = {TAU}). "
          "Q: your views, P: which asset each view is about, Ω: uncertainty of the views "
-         "(Ω = τσ²(1−c)/c, with c your confidence). Then we run mean-variance with μ_BL.")
+         "(Ω = τσ²(1−c)/c, with c your confidence from question QH6: "
+         + ", ".join(f"{k} = {v:.0%}" for k, v in CONFIDENCE_LEVELS.items())
+         + "). Medium gives the view the same uncertainty as the equilibrium. Then we run mean-variance with μ_BL.")
 
 st.subheader("Risk parity / Equal Risk Contribution")
 st.latex(r"RC_i = \frac{x_i (\Sigma x)_i}{x^\top \Sigma x} = \frac{1}{n}")
@@ -87,8 +85,8 @@ st.write("So the portfolio only trades when the gain is larger than the cost. Re
          "move towards their new target, but never trade more than the turnover limit τ⁺.")
 
 st.header("6. Time machine")
-st.write("Buy and hold from the market peak of 2008, 2020 and 2022, compared with the loss the client said "
-         "he could accept.")
+st.write("Buy and hold from the market peak of 2008, 2020 and 2022, compared with the largest temporary loss "
+         "the client said (QE2) he could tolerate without abandoning the strategy.")
 
 st.header("7. Limitations")
 st.markdown("""
@@ -99,11 +97,13 @@ st.markdown("""
 - We do not shrink the covariance matrix (Ledoit-Wolf): with about 10 products and 60 months, the estimation
   error of Σ is small compared to the error on μ. With many more products, shrinkage would become useful.
 - Bid-ask costs are the same for every product; in reality crypto and small markets cost more.
+- The questionnaire scores, the capacity tiers and the γ anchors are modelling choices: they are calibrated to be
+  consistent with QE3, not estimated on investor data.
 """)
 
 st.header("Sources")
 st.markdown("""
-Holt & Laury (2002) · Markowitz (1952) · Black & Litterman (1992) · He & Litterman (1999) ·
+Markowitz (1952) · Black & Litterman (1992) · He & Litterman (1999) ·
 Michaud (2007) · Maillard, Roncalli & Teiletche (2010) · Doeswijk, Lam & Swinkels (2014) · Roncalli (2013) ·
 QARM II lecture notes and labs (HEC Lausanne)
 """)

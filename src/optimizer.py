@@ -43,22 +43,31 @@ def weight_bounds(tickers, c):
 
 
 def check_constraints(tickers, c):
-    """Return a list of problems if no portfolio can respect the constraints."""
-    classes = [ASSETS[t][1] for t in tickers]
-    w = c["max_weight_per_asset"]
-    room = {k: classes.count(k) * w for k in ["Equity", "Bond", "Other", "Crypto"]}  # max per class
-    room["Equity"] = min(room["Equity"], c["max_equity"])
-    room["Other"] = min(room["Other"], c["max_other"])
-    room["Crypto"] = min(room["Crypto"], c["max_crypto"])
-    problems = []
+    """Return a list of problems if no portfolio can respect the constraints (empty list = feasible).
+    Exact test: a linear programme looks for one long-only, fully invested portfolio within all limits."""
     if len(tickers) < 2:
-        problems.append("Choose at least 2 products.")
-    if sum(room.values()) < 1:
-        problems.append("With these products and limits you cannot invest 100%: "
-                        "add products or raise your maximums.")
-    if room["Bond"] < c["min_bonds"]:
-        problems.append("Not enough bond products for your minimum in bonds: add bonds or lower the minimum.")
-    return problems
+        return ["Choose at least 2 products."]
+    classes = np.array([ASSETS[t][1] for t in tickers])
+    rules = np.array([classes == "Equity", -(classes == "Bond").astype(float),
+                      classes == "Other", classes == "Crypto"], dtype=float)
+    result = linprog(np.zeros(len(tickers)), A_ub=rules,
+                     b_ub=[c["max_equity"], -c["min_bonds"], c["max_other"], c["max_crypto"]],
+                     A_eq=np.ones((1, len(tickers))), b_eq=[1.0],
+                     bounds=weight_bounds(tickers, c), method="highs")
+    if result.success:
+        return []
+    w = c["max_weight_per_asset"]
+    room = {k: float((classes == k).sum()) * w for k in ["Equity", "Bond", "Other", "Crypto"]}
+    problems = []
+    if room["Bond"] < c["min_bonds"] - 1e-9:
+        problems.append(f"Your bond products can hold at most {room['Bond']:.0%}, below the minimum of "
+                        f"{c['min_bonds']:.0%} in bonds: add bond products.")
+    total = (min(room["Equity"], c["max_equity"]) + room["Bond"] + min(room["Other"], c["max_other"])
+             + min(room["Crypto"], c["max_crypto"]))
+    if total < 1 - 1e-9:
+        problems.append(f"With these products and limits you can invest only {total:.0%}: "
+                        "add products (bonds for example) or raise the maximum per product.")
+    return problems or ["These products and limits cannot be satisfied together."]
 
 
 def clean(x, tickers):
@@ -251,6 +260,8 @@ def risk_parity(cov, c):
     rules = [LinearConstraint(np.ones(n), lb=1, ub=1)] + client_constraints(tickers, c)
     res = minimize(objective, np.ones(n) / n, bounds=weight_bounds(tickers, c), constraints=rules,
                    method="SLSQP")
+    if not res.success:
+        raise RuntimeError(f"Risk parity SLSQP failed: {res.message}")
     return clean(res.x, tickers)
 
 
