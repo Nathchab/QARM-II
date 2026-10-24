@@ -1,7 +1,7 @@
 """Page 2: the client picks the products and can tighten the constraints of his profile."""
 import streamlit as st
 
-from src.app_helpers import get_profile, show_profile_messages, tighten
+from src.app_helpers import get_currency, get_profile, recommendation_summary, show_profile_messages, tighten
 from src.data import ASSETS, available_assets, first_date
 from src.optimizer import check_constraints
 from src.portfolios import WINDOW
@@ -87,4 +87,7 @@ for p in problems:
     st.error(p)
 if not problems:
     st.success(f"{len(tickers)} products selected. Your constraints are feasible.")
+    summary = recommendation_summary(profile, get_currency(), tickers, c)
+    if summary:
+        st.info(summary)
     st.page_link("app_pages/portfolio.py", label="Next: see your portfolio", icon="➡️")

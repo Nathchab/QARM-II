@@ -14,7 +14,7 @@ Transaction costs, as in lecture LN3:
 import numpy as np
 import pandas as pd
 
-from src.black_litterman import posterior_returns
+from src.black_litterman import posterior_returns, restrict_views
 from src.optimizer import mean_variance_with_costs
 from src.portfolios import WINDOW, build_portfolios
 
@@ -58,7 +58,7 @@ def run_backtest(returns, rf, tickers, benchmark, gamma, c, views, start, end,
             else:
                 limit = max_turnover
                 cost_in_optimisation = cost if cost_aware else 0.0
-                bl_mu = posterior_returns(cov, rf_now, {k: v for k, v in views.items() if k in tickers})
+                bl_mu = posterior_returns(cov, rf_now, restrict_views(views, tickers))
                 new = {
                     "Mean-variance": mean_variance_with_costs(mu, cov, gamma, c, weights["Mean-variance"].values,
                                                               cost_in_optimisation, limit),

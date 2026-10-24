@@ -6,13 +6,14 @@ import numpy as np
 import pandas as pd
 
 from src.client_profile import (GAMMA_MAX, GAMMA_MIN, ClientProfile, gamma_from_rt, indifference_gamma,
-                                qe3_gamma_interval)
+                                qe3_distance, qe3_gamma_interval)
 from src.optimizer import check_constraints, mean_variance
-from src.questionnaire import CAPACITY, HORIZON, QE3_PROFILES, RISK_TOLERANCE, UNIVERSE
+from src.questionnaire import CAPACITY, HORIZON, QE3_PROFILES, RISK_TOLERANCE, UNIVERSE, risk_tolerance_score
 
 ALL_CLASSES = list(UNIVERSE[1])
 BASE = dict(QE1="c", QE2="c", QE3="b", QE4="c", QD1="e", QD2="e",
-            age="b", income="c", savings="c", commitments="a", QF1=ALL_CLASSES, QF2="b")
+            age="b", income="c", savings="c", commitments="a", QF1=ALL_CLASSES, QF2="b",
+            QB1="a", QC1="a", QC3="d")
 
 
 def profile(**changes):
@@ -43,10 +44,19 @@ class GammaTests(unittest.TestCase):
             low, high = qe3_gamma_interval(choice)
             self.assertTrue(low <= gamma_from_rt(score) <= high, choice)
 
-    def test_consistent_answers_give_no_consistency_note(self):
-        answers = dict(QE1="d", QE2="d", QE3="c", QE4="d")  # RT = 72.5 -> gamma 1.66, inside [1.6, 2.67]
-        self.assertFalse(any("consistent" in n for n in profile(**answers).notes))
-        self.assertTrue(any("consistent" in n for n in profile(QE1="a", QE2="a", QE3="d", QE4="a").notes))
+    def test_consistency_note_only_for_clear_contradictions(self):
+        note = lambda p: any("different directions" in n for n in p.notes)
+        self.assertFalse(note(profile(QE1="d", QE2="d", QE3="c", QE4="d")))  # same QE3 interval
+        self.assertFalse(note(profile(QE1="c", QE2="c", QE3="c", QE4="c")))  # one interval away
+        self.assertTrue(note(profile(QE1="a", QE2="a", QE3="d", QE4="a")))   # boldest QE3, prudent elsewhere
+        self.assertEqual(qe3_distance("a", 9.0), 0)
+        self.assertEqual(qe3_distance("a", 1.2), 3)
+
+    def test_consistency_note_is_rare_over_all_answer_patterns(self):
+        patterns = list(itertools.product(*[list(RISK_TOLERANCE[k][1]) for k in RISK_TOLERANCE]))
+        flagged = sum(qe3_distance(e[2], gamma_from_rt(risk_tolerance_score(dict(zip(RISK_TOLERANCE, e))))) >= 2
+                      for e in patterns)
+        self.assertLess(flagged / len(patterns), 0.2)
 
     def test_tolerance_always_changes_gamma_whatever_the_capacity(self):
         """The problem of the old version: a capacity floor erased the tolerance for most clients."""
@@ -107,6 +117,27 @@ class CapacityTests(unittest.TestCase):
         del answers["QE3"]
         with self.assertRaises(ValueError):
             ClientProfile.from_answers(answers)
+
+
+class ExperienceTests(unittest.TestCase):
+    EXPERT = dict(QB1="c", QC1="c", QC3="a")
+
+    def test_all_three_conditions_are_needed(self):
+        self.assertFalse(profile().experienced)
+        p = profile(**self.EXPERT, QH4="b")
+        self.assertTrue(p.experienced and p.wants_views)
+        for code, wrong in [("QB1", "b"), ("QC1", "b"), ("QC3", "d")]:
+            self.assertFalse(profile(**dict(self.EXPERT, **{code: wrong})).experienced, code)
+
+    def test_views_question_only_required_and_used_for_experienced_investors(self):
+        with self.assertRaises(ValueError):
+            profile(**self.EXPERT)  # experienced: QH4 must be answered
+        self.assertFalse(profile(**self.EXPERT, QH4="a").wants_views)
+        self.assertFalse(profile(QH4="b").wants_views)  # not experienced: QH4 is ignored
+
+    def test_overconfident_investor_fails_the_knowledge_check(self):
+        p = profile(QB1="e", QC1="e", QC3="c")
+        self.assertFalse(p.experienced)
 
 
 class TolerantClientWithLowCapacityTests(unittest.TestCase):

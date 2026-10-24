@@ -2,11 +2,11 @@
 import pandas as pd
 import streamlit as st
 
-from src.app_helpers import show_profile_messages
+from src.app_helpers import get_currency, recommendation_summary, show_profile_messages
 from src.client_profile import GAMMA_MAX, GAMMA_MIN, ClientProfile, gamma_from_rt, qe3_gamma_interval
-from src.data import ASSETS
-from src.questionnaire import (CAPACITY, CRYPTO_CAP, HORIZON, QE3_PROFILES, RISK_TOLERANCE, UNIVERSE,
-                               missing_answers)
+from src.data import ASSETS, available_assets
+from src.questionnaire import (CAPACITY, CRYPTO_CAP, CRYPTO_CHOICE, EXPERIENCE, HORIZON, QE3_PROFILES,
+                               RISK_TOLERANCE, UNIVERSE, VIEWS_QUESTION, is_experienced, missing_answers)
 
 st.title("Robo-advisor: your investor profile")
 st.write("Two things decide your portfolio: **how much risk you are willing to take** (your risk "
@@ -25,29 +25,38 @@ def ask(code, text, opts):
 
 
 answers = {}
-with st.form("questionnaire"):
-    st.header("1. Your attitude to risk")
-    for code, (text, opts) in RISK_TOLERANCE.items():
-        answers[code] = ask(code, text, opts)
+# No st.form: the conditional questions (crypto cap, market views) appear as soon as they apply.
+st.header("1. Your attitude to risk")
+for code, (text, opts) in RISK_TOLERANCE.items():
+    answers[code] = ask(code, text, opts)
 
-    st.header("2. Your horizon and liquidity needs")
-    for code, (text, opts) in HORIZON.items():
-        answers[code] = ask(code, text, opts)
+st.header("2. Your horizon and liquidity needs")
+for code, (text, opts) in HORIZON.items():
+    answers[code] = ask(code, text, opts)
 
-    st.header("3. Your financial situation")
-    for code, (text, opts) in CAPACITY.items():
-        answers[code] = ask(code, text, opts)
-    st.caption("Emergency savings: exclude this investment and money already committed to a known payment. "
-               "Manageable commitments: you can pay them without borrowing more or selling essential assets.")
+st.header("3. Your financial situation")
+for code, (text, opts) in CAPACITY.items():
+    answers[code] = ask(code, text, opts)
+st.caption("Emergency savings: exclude this investment and money already committed to a known payment. "
+           "Manageable commitments: you can pay them without borrowing more or selling essential assets.")
 
-    st.header("4. What you want to invest in")
-    text, opts = UNIVERSE
-    answers["QF1"] = st.multiselect(f"**{text}**", list(opts), default=saved.get("QF1", list(opts)),
-                                    format_func=lambda x: opts[x][0], key="q_QF1")
+st.header("4. What you want to invest in")
+text, opts = UNIVERSE
+answers["QF1"] = st.multiselect(f"**{text}**", list(opts), default=saved.get("QF1", list(opts)),
+                                format_func=lambda x: opts[x][0], key="q_QF1")
+if CRYPTO_CHOICE in answers["QF1"]:
     text, opts = CRYPTO_CAP
-    answers["QF2"] = ask("QF2", text + " (only if you selected cryptoassets)", opts)
+    answers["QF2"] = ask("QF2", text, opts)
 
-    submitted = st.form_submit_button("Compute my profile", type="primary")
+st.header("5. Your experience")
+for code, (text, opts) in EXPERIENCE.items():
+    answers[code] = ask(code, text, opts)
+if is_experienced(answers):
+    st.success("You qualify as an experienced investor: you can add your own market views to Black-Litterman.")
+    text, opts = VIEWS_QUESTION
+    answers["QH4"] = ask("QH4", text, opts)
+
+submitted = st.button("Compute my profile", type="primary")
 
 if submitted:
     missing = missing_answers(answers)
@@ -71,7 +80,17 @@ if "profile" in st.session_state:
     col2.metric("Risk aversion γ", f"{profile.gamma:.2f}")
     col3.metric("Financial capacity", f"{profile.capacity_label} ({profile.capacity_score}/9)")
     col4.metric("Maximum in equities", f"{c['max_equity']:.0%}")
+    try:
+        tickers = [t for t in profile.recommended_assets if t in available_assets()]
+        summary = recommendation_summary(profile, get_currency(), tickers, c)
+    except Exception:
+        summary = None
+    if summary:
+        st.success(summary)
     show_profile_messages(profile, notes=True)
+    st.caption("Experienced investor: " + ("yes" if profile.experienced else "no")
+               + (" · Your own market views: yes (portfolio page)" if profile.wants_views
+                  else " · Black-Litterman uses the market equilibrium returns"))
 
     st.subheader("Your allocation limits")
     st.table(pd.DataFrame({

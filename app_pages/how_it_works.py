@@ -28,7 +28,10 @@ st.markdown("""
   floor), and for most clients the risk tolerance would no longer change anything. Here a tolerant client with
   a low capacity gets the most dynamic portfolio *inside* the limits his situation allows.
 - **Warnings** are kept for material facts only: emergency savings below 3 months, significant commitments,
-  money needed within a year, or likely withdrawals above 25%.
+  money needed within a year, or likely withdrawals above 25%. Inconsistent tolerance answers are only
+  flagged when the final γ is at least two QE3 intervals away from the QE3 answer.
+- **Recommendation.** Every profile sees what the recommended method (Black-Litterman with the equilibrium)
+  gives for his γ and limits: equity and bond shares and the estimated volatility.
 - **Products.** The asset classes chosen in QF1 give the recommended products; crypto (QF2) is also capped by
   capacity. If the chosen classes cannot satisfy the limits (for example no bond product but a bond minimum), we
   add the missing products and say so.
@@ -53,15 +56,26 @@ st.subheader("Resampled mean-variance (Michaud 2007, lab LN3)")
 st.write("Expected returns are very uncertain, so mean-variance weights are unstable. We simulate 100 new "
          "samples of 60 months from N(μ, Σ), optimise each one and average the weights.")
 
-st.subheader("Black-Litterman (1992)")
+st.subheader("Black-Litterman (1992): our recommended method")
 st.latex(r"\pi = r_f + \delta \Sigma w_{mkt}")
 st.latex(r"\mu_{BL} = \left[(\tau\Sigma)^{-1} + P^\top \Omega^{-1} P\right]^{-1}"
          r"\left[(\tau\Sigma)^{-1}\pi + P^\top \Omega^{-1} Q\right]")
-st.write(f"π: equilibrium returns of the world market portfolio (δ = {DELTA}, τ = {TAU}). "
-         "Q: your views, P: which asset each view is about, Ω: uncertainty of the views "
-         "(Ω = τσ²(1−c)/c, with c your confidence from question QH6: "
+st.write(f"π: equilibrium returns of the world market portfolio (δ = {DELTA}, τ = {TAU}). **Without views, "
+         "μ_BL = π**: this is the default for every client, because equilibrium returns are far more stable than "
+         "60-month historical averages. Without constraints the optimal portfolio is then (δ/γ)·w_mkt, the market "
+         "portfolio scaled by the client's risk aversion.")
+st.write("**Views (experienced investors only).** A client is experienced if he has invested for at least 2 years, "
+         "rates his knowledge at least intermediate (QB1, QC1) and answers the diversification question QC3 "
+         "correctly. If he also says he has convictions (QH4), he can enter up to 5 views on the portfolio page. "
+         "An absolute view (“GLD will return 6%”) is a row of P with +1 on the product; a relative view (“EEM will "
+         "beat SPY by 3%”) has +1 and −1. Q holds the values. The uncertainty of each view is")
+st.latex(r"\Omega_{kk} = \tau\,(P\Sigma P^\top)_{kk}\,\frac{1-c_k}{c_k}")
+st.write("with c the confidence of question QH6 ("
          + ", ".join(f"{k} = {v:.0%}" for k, v in CONFIDENCE_LEVELS.items())
-         + "). Medium gives the view the same uncertainty as the equilibrium. Then we run mean-variance with μ_BL.")
+         + "). For an absolute view (PΣPᵀ)ₖₖ = σᵢ²; for a relative view it is the variance of the spread, "
+         "σᵢ² + σⱼ² − 2σᵢⱼ. Medium gives the view the same uncertainty as the equilibrium. A view more than two "
+         "standard deviations √(PΣPᵀ) away from the equilibrium value Pπ triggers a warning. Then we run "
+         "mean-variance with μ_BL.")
 
 st.subheader("Risk parity / Equal Risk Contribution")
 st.latex(r"RC_i = \frac{x_i (\Sigma x)_i}{x^\top \Sigma x} = \frac{1}{n}")

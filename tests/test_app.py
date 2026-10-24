@@ -19,7 +19,8 @@ ROOT = Path(__file__).resolve().parents[1]
 PAGES = ["app_pages/profile.py", "app_pages/choices.py", "app_pages/portfolio.py",
          "app_pages/backtest.py", "app_pages/time_machine.py", "app_pages/how_it_works.py"]
 ANSWERS = dict(QE1="e", QE2="e", QE3="d", QE4="e", QD1="e", QD2="e",
-               age="d", income="a", savings="a", commitments="c", QF1=list("abcdefgh"), QF2="b")
+               age="d", income="a", savings="a", commitments="c", QF1=list("abcdefgh"), QF2="b",
+               QB1="c", QC1="c", QC3="a", QH4="b")
 
 
 def synthetic_prices():
