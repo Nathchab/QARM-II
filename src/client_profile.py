@@ -22,7 +22,8 @@ from dataclasses import dataclass, field
 from src.data import ASSETS
 from src.optimizer import check_constraints
 from src.questionnaire import (CRYPTO_CAP, CRYPTO_CHOICE, HORIZON, QE2_MAX_LOSS, QE3_PROFILES, UNIVERSE,
-                               capacity_score, missing_answers, risk_tolerance_score, rt_label)
+                               VIEWS_QUESTION, capacity_score, is_experienced, missing_answers,
+                               risk_tolerance_score, rt_label)
 
 GAMMA_MAX = 12.0  # gamma at RT = 0 (very risk averse)
 GAMMA_MIN = 1.0   # gamma at RT = 100 (very risk tolerant)
@@ -61,6 +62,18 @@ def qe3_gamma_interval(choice):
     return lower, upper
 
 
+def qe3_bracket(gamma):
+    """QE3 answer whose revealed gamma interval contains gamma."""
+    return next(letter for letter in sorted(QE3_PROFILES)
+                if qe3_gamma_interval(letter)[0] <= gamma <= qe3_gamma_interval(letter)[1])
+
+
+def qe3_distance(choice, gamma):
+    """How many QE3 intervals separate the QE3 answer from the interval of the final gamma (0 = consistent)."""
+    letters = sorted(QE3_PROFILES)
+    return abs(letters.index(qe3_bracket(gamma)) - letters.index(choice))
+
+
 def capacity_tier(score, answers):
     """Tier from the capacity score; low savings or heavy commitments cap the tier at 'Limited'.
     Returns (tier, True if this safeguard lowered the tier)."""
@@ -88,6 +101,8 @@ class ClientProfile:
     safeguard: bool = False                              # tier lowered by low savings / commitments
     crypto_blocked: bool = False                         # crypto wanted but not allowed
     added_assets: list = field(default_factory=list)     # products added to make the limits feasible
+    experienced: bool = False                            # QB1, QC1 and QC3 passed
+    wants_views: bool = False                            # experienced and QH4 = yes
 
     @classmethod
     def from_answers(cls, answers):
@@ -99,6 +114,8 @@ class ClientProfile:
         p.gamma = gamma_from_rt(p.rt)
         p.label = rt_label(p.rt)
         p.max_loss = QE2_MAX_LOSS[answers["QE2"]]
+        p.experienced = is_experienced(answers)
+        p.wants_views = p.experienced and VIEWS_QUESTION[1][answers["QH4"]][1]
         p._set_limits()
         p._set_assets()
         p._set_messages()
@@ -172,7 +189,9 @@ class ClientProfile:
         if self.added_assets:
             self.notes.append("To respect your limits we added: " + ", ".join(
                 f"{t} ({ASSETS[t][0]})" for t in self.added_assets) + ".")
-        low, high = qe3_gamma_interval(a["QE3"])
-        if not low <= self.gamma <= high:
-            self.notes.append(f"Your answers are not fully consistent: your QE3 choice alone implies "
-                              f"γ between {low:.1f} and {high:.1f}, your four answers together give γ = {self.gamma:.1f}.")
+        # Only clear contradictions: the final gamma is at least two QE3 intervals away from the QE3 answer
+        if qe3_distance(a["QE3"], self.gamma) >= 2:
+            low, high = qe3_gamma_interval(a["QE3"])
+            self.notes.append(f"Your answers point in different directions: your choice in QE3 alone implies "
+                              f"γ between {low:.1f} and {'∞' if high == float('inf') else f'{high:.1f}'}, but your "
+                              f"four answers together give γ = {self.gamma:.1f}. You may want to review part 1.")

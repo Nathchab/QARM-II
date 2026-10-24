@@ -5,7 +5,8 @@ import streamlit as st
 
 from src.data import available_assets, load_prices, monthly_returns, risk_free
 from src.optimizer import check_constraints
-from src.portfolios import BENCHMARKS, benchmark_weights, build_portfolios_safe, estimate
+from src.data import ASSETS
+from src.portfolios import BENCHMARKS, RECOMMENDED_METHOD, benchmark_weights, build_portfolios_safe, estimate
 
 
 def tighten(profile_limits, chosen):
@@ -51,8 +52,12 @@ def get_currency():
 
 
 def get_views():
-    """Black-Litterman views of the client: {ticker: (expected return, confidence between 0 and 1)}."""
-    return st.session_state.get("views", {})
+    """Black-Litterman views of the client: tuple of (asset, other or None, q, confidence).
+    Only experienced investors who asked for views (QH4) have views; everybody else uses the equilibrium."""
+    profile = st.session_state.get("profile")
+    if profile is None or not profile.wants_views:
+        return ()
+    return tuple(st.session_state.get("views", ()))
 
 
 def get_benchmark(tickers, c):
@@ -72,7 +77,7 @@ def get_data(currency):
 def get_portfolios(currency, tickers, gamma, c, views):
     """Today's four portfolios for this client: (weights by method, errors by method)."""
     returns, rf, prices = get_data(currency)
-    mu, cov = estimate(returns[tickers])
+    mu, cov = estimate(returns[list(tickers)])
     return build_portfolios_safe(mu, cov, rf.iloc[-1] * 12, gamma, c, views)
 
 
@@ -85,3 +90,22 @@ def get_valid_portfolios(currency, tickers, gamma, c, views):
         st.error("No portfolio could be calculated. Change your products or constraints.")
         st.stop()
     return portfolios
+
+
+def recommendation_summary(profile, currency, tickers, c):
+    """One sentence: what the recommended method (Black-Litterman with the market equilibrium) gives
+    for this client's gamma and limits. None if it cannot be calculated."""
+    try:
+        portfolios, _ = get_portfolios(currency, tuple(tickers), profile.gamma, c, ())
+        returns, rf, prices = get_data(currency)
+        mu, cov = estimate(returns[list(tickers)])
+    except Exception:  # missing data: the pages show their own messages
+        return None
+    w = portfolios.get(RECOMMENDED_METHOD)
+    if w is None:
+        return None
+    exposure = lambda kind: sum(x for t, x in w.items() if ASSETS[t][1] == kind)
+    vol = float((w @ cov @ w) ** 0.5)
+    return (f"With your γ = {profile.gamma:.2f} and your limits, our recommended portfolio has about "
+            f"{exposure('Equity'):.0%} in equities, {exposure('Bond'):.0%} in bonds and "
+            f"{exposure('Other') + exposure('Crypto'):.0%} in other assets, with an estimated volatility of {vol:.1%} per year.")

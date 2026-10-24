@@ -6,7 +6,10 @@ Only the questions that change the portfolio are asked:
   - D. Horizon and liquidity (QD1-QD2) -> allocation limits
   - Financial situation (4 questions)  -> capacity score (0-9) -> allocation limits
   - F. Asset universe (QF1-QF2)        -> recommended products and crypto limit
-Black-Litterman views and their confidence (QH5-QH6) are entered on the portfolio page.
+  - B/C. Experience and knowledge (QB1, QC1, QC3) -> experienced investor or not
+  - H. Market views (QH4, only for experienced investors) -> Black-Litterman views allowed or not
+Black-Litterman views and their confidence (QH5-QH6) are entered on the portfolio page, next to the
+equilibrium returns. Without views, Black-Litterman uses the market equilibrium.
 
 Each answer is stored as a letter "a", "b", ... (or a list of letters for QF1).
 """
@@ -85,17 +88,42 @@ CRYPTO_CHOICE = "h"
 CRYPTO_CAP = ("What is the maximum you want in crypto?", options(
     ("5%", 0.05), ("10%", 0.10), ("20%", 0.20), ("30%", 0.30), ("No explicit cap", 1.0)))
 
+# ---------- B/C. Experience and knowledge: (text, counts as experienced) ----------
+EXPERIENCE = {
+    "QB1": ("How long have you been investing?", options(
+        ("Never", False), ("Less than 2 years", False), ("2–5 years", True), ("5–10 years", True),
+        ("More than 10 years", True))),
+    "QC1": ("How would you rate your knowledge of financial markets?", options(
+        ("Beginner", False), ("Basic", False), ("Intermediate", True), ("Advanced", True), ("Professional", True))),
+    "QC3": ("Two individually volatile assets can produce a lower portfolio volatility when…", options(
+        ("Their returns are not perfectly positively correlated", True),
+        ("They have the same expected return", False),
+        ("They are from the same sector", False),
+        ("I do not know", False))),
+}
+# ---------- H. Market views (experienced investors only) ----------
+VIEWS_QUESTION = ("Do you have convictions on some markets that you want to include in your portfolio?", options(
+    ("No, I follow the market equilibrium", False), ("Yes, I want to enter my own views", True)))
+
 RT_LABELS = ["Conservative", "Moderate-conservative", "Growth-oriented", "Aggressive"]
 
 
 def single_choice_questions():
-    """All single-choice questions in display order: code -> (text, options)."""
-    return {**RISK_TOLERANCE, **HORIZON, **CAPACITY}
+    """All single-choice questions asked to everybody, in display order: code -> (text, options)."""
+    return {**RISK_TOLERANCE, **HORIZON, **CAPACITY, **EXPERIENCE}
+
+
+def is_experienced(answers):
+    """Experienced = at least 2 years of investing, intermediate knowledge AND the correct QC3 answer.
+    The knowledge check (QC3) protects against investors who overrate themselves."""
+    return all(answers.get(code) in opts and opts[answers[code]][1] for code, (_, opts) in EXPERIENCE.items())
 
 
 def missing_answers(answers):
-    """Codes of the questions that still need an answer."""
+    """Codes of the questions that still need an answer (conditional questions only when they apply)."""
     missing = [code for code, (_, opts) in single_choice_questions().items() if answers.get(code) not in opts]
+    if is_experienced(answers) and answers.get("QH4") not in VIEWS_QUESTION[1]:
+        missing.append("QH4")
     universe = answers.get("QF1")
     if not isinstance(universe, list) or not universe or any(u not in UNIVERSE[1] for u in universe):
         missing.append("QF1")

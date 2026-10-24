@@ -7,11 +7,12 @@ import streamlit as st
 
 from src.app_helpers import (get_benchmark, get_choices, get_currency, get_data, get_profile,
                              get_valid_portfolios, get_views, show_profile_messages)
-from src.black_litterman import CONFIDENCE_LEVELS, market_weights, posterior_returns, prior_returns
+from src.black_litterman import (CONFIDENCE_LEVELS, EXTREME_VIEW, MAX_VIEWS, market_weights, posterior_returns,
+                                  prior_returns, restrict_views, view_check, view_problems)
 from src.data import ASSETS
 from src.optimizer import beta, frontier, portfolio_stats, risk_contributions, tracking_error
 from src.portfolio_diagnostics import portfolio_diagnostics
-from src.portfolios import METHODS, WINDOW, estimate
+from src.portfolios import METHODS, RECOMMENDED_METHOD, WINDOW, estimate
 
 CLASS_COLORS = {"Equity": "#1f77b4", "Bond": "#2ca02c", "Other": "#ff7f0e", "Crypto": "#9467bd"}
 
@@ -33,15 +34,17 @@ past = returns[tickers].dropna().iloc[-WINDOW:]
 benchmark_returns = returns.loc[past.index, benchmark.index].fillna(0) @ benchmark
 
 method = st.radio("Choose a method", METHODS, horizontal=True,
-                  index=METHODS.index(st.session_state.get("method", "Mean-variance")))
+                  format_func=lambda m: f"{m} (recommended)" if m == RECOMMENDED_METHOD else m,
+                  index=METHODS.index(st.session_state.get("method", RECOMMENDED_METHOD)))
 st.session_state["method"] = method
 
-# ---------- Black-Litterman: the client gives his views (QH5) and his confidence (QH6) ----------
+# ---------- Black-Litterman: equilibrium for everybody, own views (QH5-QH6) for experienced investors ----------
 if method == "Black-Litterman":
-    st.subheader("Your views on the markets")
     prior = prior_returns(cov, rf_now)
-    st.write("Without views, Black-Litterman uses the **market equilibrium** returns: the returns that make "
-             "the world market portfolio optimal. Then you can add your own views.")
+    st.subheader("Market equilibrium")
+    st.write("Black-Litterman starts from the **market equilibrium** returns π = r_f + δΣw_mkt: the returns that "
+             "make the world market portfolio optimal. They are much more stable than historical averages, "
+             "which is why this is our recommended method.")
     st.dataframe(pd.DataFrame({
         "Product": [ASSETS[t][0] for t in mu.index],
         "Market weight": market_weights(mu.index),
@@ -50,22 +53,58 @@ if method == "Black-Litterman":
     }).style.format({"Market weight": "{:.0%}", "Equilibrium return": "{:.1%}",
                      f"Historical return ({WINDOW} months)": "{:.1%}"}))
 
-    old_views = get_views()
-    chosen = st.multiselect("On which products do you have a view?", list(mu.index),
-                            default=[t for t in old_views if t in mu.index])
-    levels = list(CONFIDENCE_LEVELS)
-    views = {}
-    for t in chosen:
-        q_old, conf_old = old_views.get(t, (round(prior[t] * 100) / 100, CONFIDENCE_LEVELS["Medium"]))
-        level_old = min(levels, key=lambda name: abs(CONFIDENCE_LEVELS[name] - conf_old))
-        col1, col2 = st.columns(2)
-        q = col1.slider(f"Expected return of {t} ({ASSETS[t][0]}), % per year", -30, 50, int(round(q_old * 100)),
-                        key=f"view_{t}")
-        level = col2.select_slider("Your confidence in this view", levels, value=level_old, key=f"conf_{t}")
-        views[t] = (q / 100, CONFIDENCE_LEVELS[level])
-    st.session_state["views"] = views
-    st.caption("Confidence sets the uncertainty of the view: Ω = τσ²(1 − c)/c, with c = 20%, 50%, 80% or 95%. "
-               "Medium gives the view the same uncertainty as the market equilibrium.")
+    if not profile.wants_views:
+        st.caption("Your profile uses the equilibrium returns without personal views. Experienced investors who "
+                   "want to add views can say so in the questionnaire (part 5).")
+    else:
+        st.subheader("Your views on the markets")
+        st.write("Add a view only where you have a real conviction. **Absolute**: “GLD will return 6% per year”. "
+                 "**Relative**: “EEM will beat SPY by 3% per year”. The confidence sets how far the portfolio "
+                 "moves from the equilibrium towards your view.")
+        saved_views = list(restrict_views(st.session_state.get("views", ()), mu.index))
+        products = list(mu.index)
+        levels = list(CONFIDENCE_LEVELS)
+        n = st.number_input("Number of views", 0, MAX_VIEWS, len(saved_views), key="n_views")
+        views = []
+        for k in range(int(n)):
+            asset, other, q, conf = saved_views[k] if k < len(saved_views) else (
+                products[0], None, round(float(prior.iloc[0]) * 100, 1) / 100, CONFIDENCE_LEVELS["Medium"])
+            st.markdown(f"**View {k + 1}**")
+            col1, col2, col3, col4, col5 = st.columns([2, 2, 2, 2, 3])
+            kind = col1.selectbox("Type", ["Absolute", "Relative"], index=0 if other is None else 1, key=f"v{k}_type")
+            asset = col2.selectbox("Product", products, index=products.index(asset), key=f"v{k}_asset")
+            if kind == "Relative":
+                others = [t for t in products if t != asset]
+                other = other if other in others else others[0]
+                other = col3.selectbox("will beat", others, index=others.index(other), key=f"v{k}_other")
+                label = "by (% per year)"
+            else:
+                other = None
+                col3.write("")
+                label = "will return (% per year)"
+            q = col4.number_input(label, -30.0, 50.0, float(round(q * 100, 1)), 0.5, key=f"v{k}_q") / 100
+            level = col5.select_slider("Confidence (QH6)", levels,
+                                       value=min(levels, key=lambda name: abs(CONFIDENCE_LEVELS[name] - conf)),
+                                       key=f"v{k}_conf")
+            view = (asset, other, q, CONFIDENCE_LEVELS[level])
+            check = view_check(cov, prior, view)
+            what = f"π_{asset}" if other is None else f"π_{asset} − π_{other}"
+            st.caption(f"Equilibrium: {what} = {check['equilibrium']:.1%} · your view is "
+                       f"{q - check['equilibrium']:+.1%} away ({check['gap']:+.1f} standard deviations of the view, "
+                       f"volatility {check['volatility']:.1%}).")
+            if check["extreme"]:
+                st.warning(f"View {k + 1} is more than {EXTREME_VIEW:g} standard deviations away from the market "
+                           "equilibrium: are you sure? With a high confidence it will dominate the portfolio.")
+            views.append(view)
+        problems = view_problems(views)
+        for problem in problems:
+            st.error(problem)
+        if problems:
+            st.info("Your views are not used until these problems are fixed.")
+        st.session_state["views"] = tuple(views) if not problems else ()
+        st.caption("Each view is a row of P (+1 on the product, −1 on the second product of a relative view) and "
+                   "a value of Q. Its uncertainty is Ω = τ·(PΣPᵀ)·(1 − c)/c, with c = 20%, 50%, 80% or 95%: "
+                   "Medium gives the view the same uncertainty as the equilibrium.")
 
 portfolios = get_valid_portfolios(currency, tickers, profile.gamma, c, get_views())
 if method not in portfolios:
@@ -74,7 +113,7 @@ if method not in portfolios:
 weights = portfolios[method]
 
 # Expected returns used by this method (Black-Litterman has its own)
-mu_method = (posterior_returns(cov, rf_now, {t: v for t, v in get_views().items() if t in mu.index})
+mu_method = (posterior_returns(cov, rf_now, restrict_views(get_views(), mu.index))
              if method == "Black-Litterman" else mu)
 
 # ---------- Key numbers ----------
