@@ -1,5 +1,5 @@
 """
-Investor questionnaire (taken from QARM_II_Questionnaire.docx, sections D, E and F).
+Investor questionnaire (taken from QARM_II_Questionnaire.docx, sections B to F and H).
 
 Only the questions that change the portfolio are asked:
   - E. Risk tolerance (QE1-QE4)      -> score RT (0-100)     -> risk aversion gamma

@@ -26,28 +26,18 @@ def estimate(monthly_returns):
 
 
 def build_portfolios(mu, cov, rf, gamma, c, views, n_sim=100):
-    """The weights of the four methods, all with the same client constraints."""
+    """The four methods, all with the same client constraints.
+    Returns (weights of the methods that worked, error message of the methods that failed):
+    one failing method does not hide the others."""
     views = restrict_views(views, mu.index)  # ignore views on products not chosen
-    return {
-        "Mean-variance": mean_variance(mu, cov, gamma, c),
-        "Resampled MV": resampled(mu, cov, gamma, c, n_sim),
-        "Black-Litterman": mean_variance(posterior_returns(cov, rf, views), cov, gamma, c),
-        "Risk parity (ERC)": risk_parity(cov, c),
-    }
-
-
-def build_portfolios_safe(mu, cov, rf, gamma, c, views, n_sim=100):
-    """Same as build_portfolios, but one failing method does not hide the others.
-    Returns (weights of the methods that worked, error message of the methods that failed)."""
-    views = restrict_views(views, mu.index)
-    calls = {
+    methods = {
         "Mean-variance": lambda: mean_variance(mu, cov, gamma, c),
         "Resampled MV": lambda: resampled(mu, cov, gamma, c, n_sim),
         "Black-Litterman": lambda: mean_variance(posterior_returns(cov, rf, views), cov, gamma, c),
         "Risk parity (ERC)": lambda: risk_parity(cov, c),
     }
     portfolios, errors = {}, {}
-    for name, compute in calls.items():
+    for name, compute in methods.items():
         try:
             portfolios[name] = compute()
         except (ValueError, RuntimeError, np.linalg.LinAlgError) as error:

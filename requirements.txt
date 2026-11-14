@@ -1,4 +1,4 @@
-# Direct dependencies pinned to the locally tested Python 3.12 environment.
+# Versions tested with Python 3.12 (choose Python 3.12 in the advanced settings of Streamlit Cloud).
 streamlit==1.65.0
 numpy==2.0.1
 pandas==2.2.2

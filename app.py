@@ -32,4 +32,11 @@ if st.sidebar.button("🔄 Update data now"):
     st.cache_data.clear()  # forget the prices in memory -> new download from Yahoo Finance
     st.rerun()
 
+# ---------- Sidebar: new client ----------
+if st.sidebar.button("🧹 Start over (new client)", help="Forget all the answers and choices of this session."):
+    client_number = st.session_state.get("client_number", 0) + 1
+    st.session_state.clear()  # forget the profile, the products, the views, the backtest settings...
+    st.session_state["client_number"] = client_number  # new keys for the questions, so they come back empty
+    st.switch_page("app_pages/profile.py")
+
 pages.run()

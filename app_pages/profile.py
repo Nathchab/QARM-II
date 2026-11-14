@@ -14,6 +14,7 @@ st.write("Two things decide your portfolio: **how much risk you are willing to t
          "horizon and liquidity needs, which set the allocation limits).")
 
 saved = st.session_state["profile"].answers if "profile" in st.session_state else {}
+client = st.session_state.get("client_number", 0)  # changes when "Start over" is clicked: the questions are new
 
 
 def ask(code, text, opts):
@@ -21,7 +22,7 @@ def ask(code, text, opts):
     letters = list(opts)
     previous = saved.get(code)
     return st.radio(f"**{text}**", letters, format_func=lambda x: opts[x][0],
-                    index=letters.index(previous) if previous in letters else None, key=f"q_{code}")
+                    index=letters.index(previous) if previous in letters else None, key=f"q_{code}_{client}")
 
 
 answers = {}
@@ -43,7 +44,7 @@ st.caption("Emergency savings: exclude this investment and money already committ
 st.header("4. What you want to invest in")
 text, opts = UNIVERSE
 answers["QF1"] = st.multiselect(f"**{text}**", list(opts), default=saved.get("QF1", list(opts)),
-                                format_func=lambda x: opts[x][0], key="q_QF1")
+                                format_func=lambda x: opts[x][0], key=f"q_QF1_{client}")
 if CRYPTO_CHOICE in answers["QF1"]:
     text, opts = CRYPTO_CAP
     answers["QF2"] = ask("QF2", text, opts)
@@ -63,7 +64,7 @@ if submitted:
     if missing:
         st.error("Please answer every question (missing: " + ", ".join(missing) + ").")
     else:
-        st.session_state["profile"] = ClientProfile.from_answers(answers)
+        st.session_state["profile"] = ClientProfile(answers)
         # new profile -> we start again from our recommended products and constraints
         for key in ["assets", "constraints"] + [k for k in st.session_state if k.startswith("pick_")]:
             st.session_state.pop(key, None)
@@ -80,11 +81,8 @@ if "profile" in st.session_state:
     col2.metric("Risk aversion γ", f"{profile.gamma:.2f}")
     col3.metric("Financial capacity", f"{profile.capacity_label} ({profile.capacity_score}/9)")
     col4.metric("Maximum in equities", f"{c['max_equity']:.0%}")
-    try:
-        tickers = [t for t in profile.recommended_assets if t in available_assets()]
-        summary = recommendation_summary(profile, get_currency(), tickers, c)
-    except Exception:
-        summary = None
+    tickers = [t for t in profile.recommended_assets if t in available_assets()]
+    summary = recommendation_summary(profile, get_currency(), tickers, c)
     if summary:
         st.success(summary)
     show_profile_messages(profile, notes=True)

@@ -1,5 +1,5 @@
 """
-Black-Litterman (1992), as in He & Litterman (1999).
+Black-Litterman (lecture LN4; Black & Litterman 1992, He & Litterman 1999).
 
 1. Prior: the returns that make the market portfolio optimal (reverse optimisation).
 2. Views: "asset i will return q% per year" (absolute) or "asset i will beat asset j by q% per year"
@@ -12,19 +12,19 @@ equilibrium returns are much more stable than 60-month historical averages.
 A view is a tuple (asset, other, q, confidence):
     absolute: ("GLD", None, 0.06, 0.5)   -> P row: +1 on GLD,             Q = 6%
     relative: ("EEM", "SPY", 0.03, 0.8)  -> P row: +1 on EEM, -1 on SPY,  Q = 3%
-The old format {ticker: (q, confidence)} (absolute views only) is still accepted.
 """
 import numpy as np
 import pandas as pd
 
-# Approximate weight of each product in the global market portfolio, in %
-# (rounded from Doeswijk, Lam & Swinkels 2014, "The Global Multi-Asset Market Portfolio").
+# Weight of each product in the "market portfolio", in %. These are OUR OWN round numbers: stocks and
+# bonds dominate, as in Doeswijk, Lam & Swinkels (2014), but we did not copy their figures (they have
+# about 36% in equities, and no gold or crypto). ETFs that overlap (QQQ is inside SPY) are a simplification.
 # We only use the products chosen by the client and rescale them to 100%.
 MARKET_WEIGHTS = {"SPY": 25, "QQQ": 5, "IWM": 2, "EFA": 10, "VGK": 4, "EWL": 1, "EWJ": 2, "EEM": 5,
                   "VNQ": 3, "AGG": 18, "SHY": 3, "TLT": 4, "TIP": 2, "LQD": 5, "HYG": 1, "EMB": 1,
                   "GLD": 3, "SLV": 0.5, "DBC": 2, "BTC-USD": 1, "ETH-USD": 0.5}
 DELTA = 2.5  # risk aversion of the average investor (He & Litterman 1999)
-TAU = 0.05   # uncertainty of the prior (small: the prior is quite reliable)
+TAU = 0.05   # uncertainty of the prior: Gamma = tau * Sigma in LN4 (small: the prior is quite reliable)
 
 # QH6 of the questionnaire: confidence in a view -> c in Omega_kk = tau * (P Sigma P')_kk * (1 - c) / c
 #   Low: 4x the prior uncertainty, Medium: same as the prior, High: 1/4, Very high: about 1/19
@@ -43,21 +43,13 @@ def prior_returns(cov, rf):
     return rf + DELTA * cov @ market_weights(cov.index)
 
 
-def normalize_views(views):
-    """Views as a tuple of (asset, other, q, confidence); accepts the old {ticker: (q, c)} format."""
-    if isinstance(views, dict):
-        return tuple((t, None, q, c) for t, (q, c) in views.items())
-    return tuple(tuple(v) for v in views or ())
-
-
 def restrict_views(views, tickers):
     """Keep only the views on products that are in the portfolio."""
-    return tuple(v for v in normalize_views(views) if v[0] in tickers and (v[1] is None or v[1] in tickers))
+    return tuple(tuple(v) for v in views if v[0] in tickers and (v[1] is None or v[1] in tickers))
 
 
 def view_problems(views):
     """Problems that make a set of views invalid (empty list = valid)."""
-    views = normalize_views(views)
     problems = []
     if len(views) > MAX_VIEWS:
         problems.append(f"At most {MAX_VIEWS} views.")
@@ -76,8 +68,8 @@ def view_problems(views):
 
 
 def view_row(view, tickers):
-    """Row of P for one view."""
-    asset, other, _, _ = view
+    """Row of P for one view: +1 on the asset, and -1 on the other asset of a relative view."""
+    asset, other, q, confidence = view
     row = np.zeros(len(tickers))
     row[tickers.index(asset)] = 1.0
     if other is not None:
@@ -95,27 +87,19 @@ def view_check(cov, pi, view):
 
 
 def posterior_returns(cov, rf, views):
-    """
-    views: absolute and/or relative views (see the top of the file).
-    Returns the Black-Litterman expected returns.
-    """
+    """Black-Litterman expected returns: the equilibrium returns corrected by the client's (valid) views."""
     pi = prior_returns(cov, rf)
-    views = normalize_views(views)
     if not views:
         return pi  # no view: we keep the market equilibrium
-    problems = view_problems(views)
-    if problems:
-        raise ValueError(" ".join(problems))
 
     tickers = list(cov.index)
-    P = np.array([view_row(v, tickers) for v in views])       # which assets each view is about
-    Q = np.array([v[2] for v in views])                        # the expected returns of the views
+    P = np.array([view_row(v, tickers) for v in views])  # which assets each view is about
+    Q = np.array([v[2] for v in views])                   # the expected returns of the views
     confidence = np.array([v[3] for v in views])
+    gamma_matrix = TAU * cov.values                       # uncertainty of the prior (LN4: Gamma = tau * Sigma)
     # Uncertainty of each view: confidence 50% -> same uncertainty as the prior; 95% -> almost certain
-    omega = TAU * np.einsum("ki,ij,kj->k", P, cov.values, P) * (1 - confidence) / confidence
-
-    tau_cov_inv = np.linalg.inv(TAU * cov.values)
-    omega_inv = np.diag(1 / omega)
-    A = tau_cov_inv + P.T @ omega_inv @ P
-    b = tau_cov_inv @ pi.values + P.T @ omega_inv @ Q
-    return pd.Series(np.linalg.solve(A, b), index=tickers)
+    omega = np.diag(np.diag(P @ gamma_matrix @ P.T) * (1 - confidence) / confidence)
+    # LN4: mu_bar = pi + Gamma P' (P Gamma P' + Omega)^-1 (Q - P pi)
+    disequilibrium = Q - P @ pi.values                    # gap between the views and the market
+    correction = gamma_matrix @ P.T @ np.linalg.solve(P @ gamma_matrix @ P.T + omega, disequilibrium)
+    return pi + correction

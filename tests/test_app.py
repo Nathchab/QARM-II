@@ -1,5 +1,5 @@
-"""Offline smoke test of every page with Streamlit's AppTest (synthetic prices, no download).
-Skipped when Streamlit is not installed."""
+"""Offline test of every page with Streamlit's AppTest (invented prices, no download).
+The pages are opened through app.py, exactly as a visitor does."""
 from pathlib import Path
 import unittest
 from unittest.mock import patch
@@ -48,21 +48,32 @@ class AppSmokeTests(unittest.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
 
+    def open_page(self, page, profile=None):
+        app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=120)
+        if profile is not None:
+            app.session_state["profile"] = profile
+        app.switch_page(page)
+        return app.run()
+
     def test_every_page_runs_for_a_tolerant_client_with_low_capacity(self):
-        profile = ClientProfile.from_answers(ANSWERS)
+        profile = ClientProfile(ANSWERS)
         for page in PAGES:
             with self.subTest(page=page):
-                app = AppTest.from_file(str(ROOT / page), default_timeout=120)
-                app.session_state["profile"] = profile
-                app.run()
+                app = self.open_page(page, profile)
                 self.assertEqual(len(app.exception), 0, [e.value for e in app.exception])
                 self.assertEqual(len(app.error), 0, [e.value for e in app.error])
 
     def test_profile_page_without_profile_shows_the_questionnaire(self):
-        app = AppTest.from_file(str(ROOT / "app_pages/profile.py"), default_timeout=60)
-        app.run()
+        app = self.open_page("app_pages/profile.py")
         self.assertEqual(len(app.exception), 0)
         self.assertGreaterEqual(len(app.radio), 10)
+
+    def test_start_over_forgets_the_client(self):
+        app = self.open_page("app_pages/portfolio.py", ClientProfile(ANSWERS))
+        self.assertIn("profile", app.session_state)
+        next(b for b in app.button if "Start over" in b.label).click().run()
+        self.assertNotIn("profile", app.session_state)
+        self.assertEqual(app.title[0].value, "Robo-advisor: your investor profile")
 
 
 if __name__ == "__main__":

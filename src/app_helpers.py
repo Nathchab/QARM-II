@@ -4,9 +4,8 @@ Small helpers shared by the pages of the app (with Streamlit cache, so pages loa
 import streamlit as st
 
 from src.data import available_assets, load_prices, monthly_returns, risk_free
-from src.optimizer import check_constraints
-from src.data import ASSETS
-from src.portfolios import BENCHMARKS, RECOMMENDED_METHOD, benchmark_weights, build_portfolios_safe, estimate
+from src.optimizer import check_constraints, class_exposures
+from src.portfolios import BENCHMARKS, RECOMMENDED_METHOD, benchmark_weights, build_portfolios, estimate
 
 
 def tighten(profile_limits, chosen):
@@ -73,12 +72,12 @@ def get_data(currency):
     return monthly_returns(prices), risk_free(currency), prices
 
 
-@st.cache_data
+@st.cache_data(max_entries=100)  # keep at most 100 results in memory (the website runs all the time)
 def get_portfolios(currency, tickers, gamma, c, views):
     """Today's four portfolios for this client: (weights by method, errors by method)."""
     returns, rf, prices = get_data(currency)
     mu, cov = estimate(returns[list(tickers)])
-    return build_portfolios_safe(mu, cov, rf.iloc[-1] * 12, gamma, c, views)
+    return build_portfolios(mu, cov, rf.iloc[-1] * 12, gamma, c, views)
 
 
 def get_valid_portfolios(currency, tickers, gamma, c, views):
@@ -96,16 +95,14 @@ def recommendation_summary(profile, currency, tickers, c):
     """One sentence: what the recommended method (Black-Litterman with the market equilibrium) gives
     for this client's gamma and limits. None if it cannot be calculated."""
     try:
-        portfolios, _ = get_portfolios(currency, tuple(tickers), profile.gamma, c, ())
+        portfolios, errors = get_portfolios(currency, tuple(tickers), profile.gamma, c, ())
         returns, rf, prices = get_data(currency)
         mu, cov = estimate(returns[list(tickers)])
-    except Exception:  # missing data: the pages show their own messages
+        w = portfolios[RECOMMENDED_METHOD]
+    except Exception:  # missing data or failed optimisation: no sentence (the pages show their own messages)
         return None
-    w = portfolios.get(RECOMMENDED_METHOD)
-    if w is None:
-        return None
-    exposure = lambda kind: sum(x for t, x in w.items() if ASSETS[t][1] == kind)
+    exposure = class_exposures(w)
     vol = float((w @ cov @ w) ** 0.5)
     return (f"With your γ = {profile.gamma:.2f} and your limits, our recommended portfolio has about "
-            f"{exposure('Equity'):.0%} in equities, {exposure('Bond'):.0%} in bonds and "
-            f"{exposure('Other') + exposure('Crypto'):.0%} in other assets, with an estimated volatility of {vol:.1%} per year.")
+            f"{exposure['Equity']:.0%} in equities, {exposure['Bond']:.0%} in bonds and "
+            f"{exposure['Other'] + exposure['Crypto']:.0%} in other assets, with an estimated volatility of {vol:.1%} per year.")

@@ -8,7 +8,7 @@ from src.data import ASSETS
 st.title("How it works")
 
 st.header("1. Your profile")
-st.write("The questionnaire (QARM II questionnaire, sections D, E and F) measures two different things, "
+st.write("The questionnaire (QARM II questionnaire, sections B to F and H) measures two different things, "
          "and each one has its own job in the portfolio.")
 st.markdown("""
 - **Risk tolerance → γ.** RT is the average of the four answers of part 1 (QE1–QE4, each scored 0–100).
@@ -56,14 +56,14 @@ st.subheader("Resampled mean-variance (Michaud 2007, lab LN3)")
 st.write("Expected returns are very uncertain, so mean-variance weights are unstable. We simulate 100 new "
          "samples of 60 months from N(μ, Σ), optimise each one and average the weights.")
 
-st.subheader("Black-Litterman (1992): our recommended method")
+st.subheader("Black-Litterman (1992, lecture LN4): our recommended method")
 st.latex(r"\pi = r_f + \delta \Sigma w_{mkt}")
-st.latex(r"\mu_{BL} = \left[(\tau\Sigma)^{-1} + P^\top \Omega^{-1} P\right]^{-1}"
-         r"\left[(\tau\Sigma)^{-1}\pi + P^\top \Omega^{-1} Q\right]")
-st.write(f"π: equilibrium returns of the world market portfolio (δ = {DELTA}, τ = {TAU}). **Without views, "
+st.latex(r"\mu_{BL} = \pi + \Gamma P^\top \left(P \Gamma P^\top + \Omega\right)^{-1} (Q - P\pi),"
+         r"\qquad \Gamma = \tau\Sigma")
+st.write(f"π: equilibrium returns of the market portfolio (δ = {DELTA}, τ = {TAU}). **Without views, "
          "μ_BL = π**: this is the default for every client, because equilibrium returns are far more stable than "
-         "60-month historical averages. Without constraints the optimal portfolio is then (δ/γ)·w_mkt, the market "
-         "portfolio scaled by the client's risk aversion.")
+         "60-month historical averages. With these returns, an investor without constraints who can also hold "
+         "cash would hold (δ/γ)·w_mkt in risky assets: the market portfolio scaled by his risk aversion.")
 st.write("**Views (experienced investors only).** A client is experienced if he has invested for at least 2 years, "
          "rates his knowledge at least intermediate (QB1, QC1) and answers the diversification question QC3 "
          "correctly. If he also says he has convictions (QH4), he can enter up to 5 views on the portfolio page. "
@@ -77,9 +77,11 @@ st.write("with c the confidence of question QH6 ("
          "standard deviations √(PΣPᵀ) away from the equilibrium value Pπ triggers a warning. Then we run "
          "mean-variance with μ_BL.")
 
-st.subheader("Risk parity / Equal Risk Contribution")
+st.subheader("Risk parity / Equal Risk Contribution (lecture LN5)")
 st.latex(r"RC_i = \frac{x_i (\Sigma x)_i}{x^\top \Sigma x} = \frac{1}{n}")
-st.write("Does not use expected returns at all: every asset brings the same share of risk.")
+st.write("Does not use expected returns at all: every asset brings the same share of risk. When the client's "
+         "limits make equal shares impossible, we take the portfolio inside the limits whose risk shares are "
+         "the closest to 1/n.")
 
 st.header("4. Risk measures (lab LN2)")
 st.write("Beta with the covariance method β = cov(R_p, R_b) / var(R_b) and tracking error = volatility of "
@@ -107,7 +109,8 @@ st.markdown("""
 - Past returns are a noisy guess of future returns (this is why we offer Black-Litterman and resampling).
 - 60 months is a short window; a longer one is more stable but reacts slower.
 - In CHF, we do not hedge the currency risk; the CHF risk-free rate is an approximation (SNB policy rate).
-- Market weights for Black-Litterman are rounded approximations.
+- The market weights of Black-Litterman are our own round numbers, not measured market capitalisations.
+- The current month is not finished: it is used as if it was a full month.
 - We do not shrink the covariance matrix (Ledoit-Wolf): with about 10 products and 60 months, the estimation
   error of Σ is small compared to the error on μ. With many more products, shrinkage would become useful.
 - Bid-ask costs are the same for every product; in reality crypto and small markets cost more.

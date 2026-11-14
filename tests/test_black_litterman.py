@@ -4,8 +4,8 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from src.black_litterman import (CONFIDENCE_LEVELS, TAU, normalize_views, posterior_returns, prior_returns,
-                                 restrict_views, view_check, view_problems)
+from src.black_litterman import (CONFIDENCE_LEVELS, TAU, posterior_returns, prior_returns, restrict_views,
+                                 view_check, view_problems)
 
 TICKERS = ["SPY", "EEM", "AGG", "GLD"]
 VOL = np.array([.16, .22, .05, .15])
@@ -20,12 +20,6 @@ class BlackLittermanTests(unittest.TestCase):
 
     def test_no_view_gives_the_equilibrium(self):
         pd.testing.assert_series_equal(posterior_returns(COV, RF, ()), self.pi)
-        pd.testing.assert_series_equal(posterior_returns(COV, RF, {}), self.pi)
-
-    def test_old_absolute_format_is_the_same_as_the_new_one(self):
-        old = posterior_returns(COV, RF, {"GLD": (.08, .5)})
-        new = posterior_returns(COV, RF, [("GLD", None, .08, .5)])
-        pd.testing.assert_series_equal(old, new)
 
     def test_absolute_view_moves_the_asset_towards_the_view_more_with_more_confidence(self):
         q = self.pi.GLD + .04
@@ -68,13 +62,21 @@ class BlackLittermanTests(unittest.TestCase):
         self.assertTrue(view_problems([("EEM", "SPY", .02, .5), ("SPY", "EEM", -.02, .5)]))
         self.assertTrue(view_problems([("SPY", None, .08, 1.0)]))
         self.assertEqual(view_problems([("SPY", None, .08, .5), ("EEM", "SPY", .02, .8)]), [])
-        with self.assertRaises(ValueError):
-            posterior_returns(COV, RF, [("SPY", "SPY", .01, .5)])
 
     def test_views_on_products_not_in_the_portfolio_are_dropped(self):
         views = [("SPY", None, .08, .5), ("EEM", "QQQ", .02, .5)]
         self.assertEqual(restrict_views(views, TICKERS), (("SPY", None, .08, .5),))
-        self.assertEqual(normalize_views(None), ())
+
+    def test_same_result_as_the_other_usual_formula(self):
+        """LN4 formula (in the code) = precision form [(tau S)^-1 + P'O^-1 P]^-1 [(tau S)^-1 pi + P'O^-1 Q]."""
+        views = [("GLD", None, .08, .5), ("EEM", "SPY", .03, .8)]
+        P = np.array([[0, 0, 0, 1], [-1, 1, 0, 0]])
+        Q, c = np.array([.08, .03]), np.array([.5, .8])
+        omega_inv = np.diag(1 / (TAU * np.diag(P @ COV.values @ P.T) * (1 - c) / c))
+        prior_precision = np.linalg.inv(TAU * COV.values)
+        expected = np.linalg.solve(prior_precision + P.T @ omega_inv @ P,
+                                   prior_precision @ self.pi.values + P.T @ omega_inv @ Q)
+        np.testing.assert_allclose(posterior_returns(COV, RF, views), expected, atol=1e-12)
 
 
 if __name__ == "__main__":

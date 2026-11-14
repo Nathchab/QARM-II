@@ -10,8 +10,7 @@ from src.app_helpers import (get_benchmark, get_choices, get_currency, get_data,
 from src.black_litterman import (CONFIDENCE_LEVELS, EXTREME_VIEW, MAX_VIEWS, market_weights, posterior_returns,
                                   prior_returns, restrict_views, view_check, view_problems)
 from src.data import ASSETS
-from src.optimizer import beta, frontier, portfolio_stats, risk_contributions, tracking_error
-from src.portfolio_diagnostics import portfolio_diagnostics
+from src.optimizer import beta, class_exposures, frontier, portfolio_stats, risk_contributions, tracking_error
 from src.portfolios import METHODS, RECOMMENDED_METHOD, WINDOW, estimate
 
 CLASS_COLORS = {"Equity": "#1f77b4", "Bond": "#2ca02c", "Other": "#ff7f0e", "Crypto": "#9467bd"}
@@ -118,7 +117,7 @@ mu_method = (posterior_returns(cov, rf_now, restrict_views(get_views(), mu.index
 
 # ---------- Key numbers ----------
 ret, vol = portfolio_stats(weights, mu_method, cov)
-diagnostics = portfolio_diagnostics(weights, mu_method, cov, c)
+exposure = class_exposures(weights)
 col1, col2, col3, col4 = st.columns(4)
 col1.metric("Expected return", f"{ret:.1%}")
 col2.metric("Volatility", f"{vol:.1%}")
@@ -126,16 +125,17 @@ col3.metric("Sharpe ratio", f"{(ret - rf_now) / vol:.2f}" if vol > 0 else "–")
 col4.metric("Beta vs benchmark", f"{beta(past @ weights, benchmark_returns):.2f}",
             help=f"Benchmark: {benchmark_name} (you can change it on the backtest page)")
 col1, col2, col3, col4 = st.columns(4)
-col1.metric("In equities", f"{diagnostics['Equity exposure']:.0%}", help=f"Your maximum: {c['max_equity']:.0%}")
-col2.metric("In bonds", f"{diagnostics['Bond exposure']:.0%}", help=f"Your minimum: {c['min_bonds']:.0%}")
-col3.metric("Largest product", f"{diagnostics['Largest holding']:.0%}")
-col4.metric("Effective number of products", f"{diagnostics['Effective holdings']:.1f}", help="1 / Σ wᵢ²")
-binding = [b for b in diagnostics["Binding allocation limits"] if not b.startswith("max_weight")
-           and not (b == "max_crypto" and c["max_crypto"] == 0) and not (b == "min_bonds" and c["min_bonds"] == 0)]
+col1.metric("In equities", f"{exposure['Equity']:.0%}", help=f"Your maximum: {c['max_equity']:.0%}")
+col2.metric("In bonds", f"{exposure['Bond']:.0%}", help=f"Your minimum: {c['min_bonds']:.0%}")
+col3.metric("Largest product", f"{weights.max():.0%}")
+col4.metric("Effective number of products", f"{1 / (weights @ weights):.1f}", help="1 / Σ wᵢ²")
+# A limit is binding when the portfolio sits exactly on it (a limit of 0% is not worth mentioning)
+LIMITS = {"max_equity": ("Equity", "maximum in equities"), "min_bonds": ("Bond", "minimum in bonds"),
+          "max_other": ("Other", "maximum in gold and commodities"), "max_crypto": ("Crypto", "maximum in crypto")}
+binding = [name for key, (kind, name) in LIMITS.items()
+           if abs(exposure[kind] - c[key]) <= 1e-6 and not (key in ("min_bonds", "max_crypto") and c[key] == 0)]
 if binding and method != "Risk parity (ERC)":
-    names = {"max_equity": "maximum in equities", "min_bonds": "minimum in bonds",
-             "max_other": "maximum in gold and commodities", "max_crypto": "maximum in crypto"}
-    st.caption("Your limits are binding: " + ", ".join(names[b] for b in binding) + ". Without them, the "
+    st.caption("Your limits are binding: " + ", ".join(binding) + ". Without them, the "
                "optimiser would choose a different mix for your γ.")
 
 # ---------- Weights and risk contributions ----------

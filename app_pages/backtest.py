@@ -31,6 +31,8 @@ last = returns.index[-1].date()
 s = st.session_state.get("bt_settings", {"period": (first, last), "rebalancing": "Every 3 months",
                                           "cost_bps": 10, "cost_aware": True, "max_turnover": 200})
 period = (max(s["period"][0], first), min(s["period"][1], last))
+if period[0] >= period[1]:  # the saved period does not exist for these products: back to the full history
+    period = (first, last)
 with st.form("settings"):
     col1, col2 = st.columns(2)
     period = col1.slider("Backtest period", first, last, period, format="MMM YYYY")
@@ -51,7 +53,7 @@ st.session_state["bt_settings"] = {"period": period, "rebalancing": rebalancing,
                                    "cost_aware": cost_aware, "max_turnover": max_turnover}
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, max_entries=100)
 def cached_backtest(currency, tickers, benchmark_name, gamma, c, views, period, rebalance, cost, cost_aware,
                     max_turnover):
     returns, rf, prices = get_data(currency)

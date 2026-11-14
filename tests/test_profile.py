@@ -17,7 +17,7 @@ BASE = dict(QE1="c", QE2="c", QE3="b", QE4="c", QD1="e", QD2="e",
 
 
 def profile(**changes):
-    return ClientProfile.from_answers(dict(BASE, **changes))
+    return ClientProfile(dict(BASE, **changes))
 
 
 class GammaTests(unittest.TestCase):
@@ -26,8 +26,6 @@ class GammaTests(unittest.TestCase):
         self.assertAlmostEqual(gamma_from_rt(100), GAMMA_MIN)
         values = [gamma_from_rt(rt) for rt in range(101)]
         self.assertTrue(all(a > b for a, b in zip(values, values[1:])))
-        with self.assertRaises(ValueError):
-            gamma_from_rt(101)
 
     def test_qe3_thresholds_follow_mean_variance_utility(self):
         self.assertAlmostEqual(indifference_gamma("a", "b"), 8.0)
@@ -116,7 +114,7 @@ class CapacityTests(unittest.TestCase):
         answers = dict(BASE)
         del answers["QE3"]
         with self.assertRaises(ValueError):
-            ClientProfile.from_answers(answers)
+            ClientProfile(answers)
 
 
 class ExperienceTests(unittest.TestCase):

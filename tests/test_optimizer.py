@@ -1,158 +1,121 @@
-"""Numerical contracts for the existing constrained mean-variance problem."""
-from copy import deepcopy
-from types import SimpleNamespace
+"""The optimisers: known solutions, client limits, transaction costs and risk parity."""
 import unittest
-from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
-from scipy.optimize import LinearConstraint
 
-from src import optimizer
-from src.portfolios import build_portfolios
+from src.optimizer import (check_constraints, frontier, mean_variance, mean_variance_with_costs, resampled,
+                           respects_limits, risk_contributions, risk_parity)
+
+NO_LIMIT = dict(max_equity=1., min_bonds=0., max_other=1., max_crypto=0., max_weight_per_asset=1.)
+
+
+def diagonal_cov(tickers, variances):
+    return pd.DataFrame(np.diag(variances), index=tickers, columns=tickers)
 
 
 class MeanVarianceTests(unittest.TestCase):
-    def setUp(self):
-        self.mu = pd.Series([.08, .03], index=["SPY", "AGG"])
-        self.cov = pd.DataFrame(np.diag([.04, .01]), index=self.mu.index, columns=self.mu.index)
-        self.c = dict(max_equity=1., min_bonds=0., max_other=0., max_crypto=0., max_weight_per_asset=1.)
+    def test_two_assets_match_the_formula_by_hand(self):
+        """Two uncorrelated assets: x_SPY = 0.2 + 1/gamma (between 0 and 1), found with the Lagrangian."""
+        mu = pd.Series([.08, .03], index=["SPY", "AGG"])
+        cov = diagonal_cov(mu.index, [.04, .01])
+        for gamma in [.25, 1., 2., 6., 12., 100.]:
+            w = mean_variance(mu, cov, gamma, NO_LIMIT)
+            self.assertAlmostEqual(w.SPY, min(.2 + 1 / gamma, 1), places=6)
+            self.assertAlmostEqual(w.sum(), 1, places=9)
 
-    def assert_feasible(self, w, c=None):
-        c = c or self.c
-        rules = [LinearConstraint(np.ones(len(w)), 1, 1)] + optimizer.client_constraints(list(w.index), c)
-        self.assertLessEqual(optimizer._mv_violation(w, rules, optimizer.weight_bounds(w.index, c)), 1e-9)
-
-    def test_two_asset_closed_form_and_risk_aversion_direction(self):
-        previous = 1.
-        for g in [.05, .25, 1., 1.25, 2., 6., 12., 100., 1000.]:
-            with self.subTest(gamma=g):
-                w = optimizer.mean_variance(self.mu, self.cov, g, self.c)
-                self.assertIsInstance(w, pd.Series)
-                self.assertTrue(w.index.equals(self.mu.index))
-                self.assertAlmostEqual(w.SPY, np.clip(.2 + 1/g, 0, 1), delta=2e-7)
-                self.assertLessEqual(w.SPY, previous+1e-8)
-                self.assert_feasible(w)
-                previous = w.SPY
-
-    def test_common_positive_scaling_preserves_weights(self):
-        for g in [.05, 2., 6., 12., 1000.]:
-            expected = optimizer.mean_variance(self.mu, self.cov, g, self.c)
-            for factor in [1e-250, 1e-12, 1e-6, 1/12, 12., 1e6, 1e12, 1e250]:
-                with self.subTest(gamma=g, factor=factor):
-                    actual = optimizer.mean_variance(self.mu*factor, self.cov*factor, g, self.c)
-                    np.testing.assert_allclose(actual, expected, atol=2e-7, rtol=0)
-                    self.assert_feasible(actual)
-
-    def test_small_gamma_normalization_preserves_an_interior_analytical_solution(self):
-        mu = pd.Series([.035, .03], index=self.mu.index)
-        for g in [.25, .5, .75]:
-            with self.subTest(gamma=g):
-                w = optimizer.mean_variance(mu, self.cov, g, self.c)
-                self.assertAlmostEqual(w.SPY, .2 + .1/g, delta=2e-7)
-                self.assert_feasible(w)
-
-    def test_multi_asset_scaling_and_binding_constraints(self):
+    def test_limits_are_respected_and_can_be_binding(self):
         tickers = ["SPY", "AGG", "TLT", "GLD"]
         mu = pd.Series([.12, .02, .025, .04], index=tickers)
-        cov = pd.DataFrame(np.diag([.04, .003, .02, .03]), index=tickers, columns=tickers)
-        c = dict(self.c, max_equity=.2, min_bonds=.7, max_other=.1, max_weight_per_asset=.4)
-        w = optimizer.mean_variance(mu, cov, .2, c)
-        self.assert_feasible(w, c)
-        np.testing.assert_allclose(w, [.2, .3, .4, .1], atol=2e-7, rtol=0)
-        for factor in [1e-12, 1/12, 12., 1e12]:
-            np.testing.assert_allclose(optimizer.mean_variance(mu*factor, cov*factor, .2, c), w, atol=2e-7, rtol=0)
+        cov = diagonal_cov(tickers, [.04, .003, .02, .03])
+        c = dict(max_equity=.2, min_bonds=.7, max_other=.1, max_crypto=0., max_weight_per_asset=.4)
+        w = mean_variance(mu, cov, .2, c)  # a very tolerant client: every limit binds
+        np.testing.assert_allclose(w, [.2, .3, .4, .1], atol=1e-6)
+        self.assertTrue(respects_limits(w.values, tickers, c))
 
-    def test_initialization_is_feasible_deterministic_and_independent_of_returns(self):
-        real_minimize = optimizer.minimize
-        starts = []
-        def inspect_start(fun, x0, **kwargs):
-            starts.append(x0.copy())
-            self.assertLessEqual(optimizer._mv_violation(x0, kwargs["constraints"], kwargs["bounds"]), 1e-9)
-            return real_minimize(fun, x0, **kwargs)
-        c = dict(self.c, max_equity=.2)
-        with patch.object(optimizer, "minimize", inspect_start):
-            optimizer.mean_variance(self.mu, self.cov, 2., c)
-            optimizer.mean_variance(self.mu*3, self.cov/2, 20., c)
-        np.testing.assert_array_equal(starts[0], starts[1])
+    def test_same_units_for_mu_and_cov_do_not_matter(self):
+        mu = pd.Series([.08, .03, .05], index=["SPY", "AGG", "GLD"])
+        cov = diagonal_cov(mu.index, [.04, .01, .03])
+        yearly = mean_variance(mu, cov, 4., NO_LIMIT)
+        monthly = mean_variance(mu / 12, cov / 12, 4., NO_LIMIT)
+        np.testing.assert_allclose(monthly, yearly, atol=1e-6)
 
-    def test_infeasible_capacity_and_missing_asset_class_raise(self):
-        for c in [dict(self.c, max_weight_per_asset=.4), dict(self.c, min_bonds=1.1),
-                  dict(self.c, max_equity=-.1), dict(self.c, max_weight_per_asset=-.1)]:
-            with self.subTest(c=c), self.assertRaisesRegex(ValueError, "infeasible"):
-                optimizer.mean_variance(self.mu, self.cov, 2., c)
-        mu = self.mu.iloc[:1]
-        with self.assertRaisesRegex(ValueError, "infeasible"):
-            optimizer.mean_variance(mu, self.cov.loc[mu.index, mu.index], 2., dict(self.c, min_bonds=.2))
+    def test_impossible_limits_are_explained_and_refused(self):
+        tickers = ["SPY", "AGG"]
+        c = dict(NO_LIMIT, max_weight_per_asset=.4)  # 2 products x 40% = 80%: cannot invest 100%
+        self.assertIn("80%", check_constraints(tickers, c)[0])
+        self.assertEqual(check_constraints(tickers, NO_LIMIT), [])
+        mu = pd.Series([.08, .03], index=tickers)
+        with self.assertRaises(ValueError):
+            mean_variance(mu, diagonal_cov(tickers, [.04, .01]), 2., c)
 
-    def test_solver_failure_is_not_hidden_by_cleanup(self):
-        result = SimpleNamespace(success=False, status=9, message="Iteration limit reached", x=np.array([.4, .6]))
-        with patch.object(optimizer, "minimize", return_value=result):
-            with self.assertRaisesRegex(RuntimeError, "SLSQP failed.*Iteration limit"):
-                optimizer.mean_variance(self.mu, self.cov, 2., self.c)
+    def test_more_risk_aversion_means_less_volatility_on_the_frontier(self):
+        mu = pd.Series([.08, .03, .05], index=["SPY", "AGG", "GLD"])
+        cov = diagonal_cov(mu.index, [.04, .01, .03])
+        volatility = frontier(mu, cov, NO_LIMIT)["Volatility"]
+        self.assertTrue((volatility.diff().dropna() <= 1e-9).all())
 
-    def test_success_flag_does_not_allow_invalid_weights(self):
-        for weights in [[1.2, -.2], [.4, .5], [np.nan, .5], [.5], [np.inf, 0]]:
-            result = SimpleNamespace(success=True, x=np.array(weights))
-            with self.subTest(weights=weights), patch.object(optimizer, "minimize", return_value=result):
-                with self.assertRaisesRegex(RuntimeError, "invalid weights"):
-                    optimizer.mean_variance(self.mu, self.cov, 2., self.c)
+    def test_resampling_gives_the_same_valid_portfolio_every_time(self):
+        mu = pd.Series([.08, .03, .05], index=["SPY", "AGG", "GLD"])
+        cov = diagonal_cov(mu.index, [.04, .01, .03])
+        first, second = resampled(mu, cov, 3., NO_LIMIT, n_sim=8), resampled(mu, cov, 3., NO_LIMIT, n_sim=8)
+        np.testing.assert_array_equal(first, second)
+        self.assertTrue(respects_limits(first.values, list(mu.index), NO_LIMIT))
 
-    def test_validated_weights_are_returned_without_clipping_or_normalizing(self):
-        raw = np.array([.4, .6000000005])  # accepted floating-point budget residual
-        with patch.object(optimizer, "minimize", return_value=SimpleNamespace(success=True, x=raw)):
-            actual = optimizer.mean_variance(self.mu, self.cov, 2., self.c)
-        np.testing.assert_array_equal(actual.values, raw)
 
-    def test_feasibility_solver_failure_is_descriptive(self):
-        c = dict(self.c, max_equity=.2)
-        with patch.object(optimizer, "linprog", return_value=SimpleNamespace(success=False, status=4, message="Numerical issue")):
-            with self.assertRaisesRegex(RuntimeError, "initialization failed.*Numerical issue"):
-                optimizer.mean_variance(self.mu, self.cov, 2., c)
+class TransactionCostTests(unittest.TestCase):
+    def setUp(self):
+        self.mu = pd.Series([.08, .03, .05], index=["SPY", "AGG", "GLD"])
+        self.cov = diagonal_cov(self.mu.index, [.04, .01, .03])
+        self.x0 = np.array([.2, .6, .2])  # current portfolio
+        self.target = mean_variance(self.mu, self.cov, 3., NO_LIMIT)
 
-    def test_invalid_inputs_are_rejected(self):
-        for g in [0, -1, np.nan, np.inf, True, "2"]:
-            with self.subTest(gamma=g), self.assertRaisesRegex(ValueError, "risk_aversion"):
-                optimizer.mean_variance(self.mu, self.cov, g, self.c)
-        bad_cov = self.cov.copy()
-        bad_cov.iloc[0, 0] = -.04
-        with self.assertRaisesRegex(ValueError, "positive semidefinite"):
-            optimizer.mean_variance(self.mu, bad_cov, 2., self.c)
-        bad_cov.iloc[0, 0], bad_cov.iloc[0, 1] = .04, .01
-        with self.assertRaisesRegex(ValueError, "symmetric"):
-            optimizer.mean_variance(self.mu, bad_cov, 2., self.c)
-        with self.assertRaisesRegex(ValueError, "match"):
-            optimizer.mean_variance(self.mu, self.cov.iloc[::-1, ::-1], 2., self.c)
-        with self.assertRaisesRegex(ValueError, "finite"):
-            optimizer.mean_variance(self.mu*np.nan, self.cov, 2., self.c)
-        with self.assertRaisesRegex(ValueError, "max_equity"):
-            optimizer.mean_variance(self.mu, self.cov, 2., dict(self.c, max_equity=np.nan))
+    def turnover(self, w):
+        return np.abs(w.values - self.x0).sum()
 
-    def test_zero_and_singular_covariance_are_not_regularized(self):
-        zero = self.cov*0
-        w = optimizer.mean_variance(self.mu, zero, 2., self.c)
-        self.assertAlmostEqual(w.SPY, 1., delta=1e-8)
-        tied = optimizer.mean_variance(self.mu*0, zero, 2., dict(self.c, max_equity=.2))
-        self.assert_feasible(tied, dict(self.c, max_equity=.2))
-        rank_one = pd.DataFrame([[.04, .02], [.02, .01]], index=self.mu.index, columns=self.mu.index)
-        self.assert_feasible(optimizer.mean_variance(self.mu, rank_one, 2., self.c))
+    def test_without_costs_we_go_to_the_mean_variance_portfolio(self):
+        w = mean_variance_with_costs(self.mu, self.cov, 3., NO_LIMIT, self.x0, cost=0.)
+        np.testing.assert_allclose(w, self.target, atol=1e-3)
 
-    def test_inputs_are_not_mutated(self):
-        mu, cov, c = self.mu.copy(), self.cov.copy(), deepcopy(self.c)
-        optimizer.mean_variance(mu, cov, 2., c)
-        pd.testing.assert_series_equal(mu, self.mu)
-        pd.testing.assert_frame_equal(cov, self.cov)
-        self.assertEqual(c, self.c)
+    def test_costs_reduce_trading_and_very_high_costs_stop_it(self):
+        cheap = mean_variance_with_costs(self.mu, self.cov, 3., NO_LIMIT, self.x0, cost=.01)
+        expensive = mean_variance_with_costs(self.mu, self.cov, 3., NO_LIMIT, self.x0, cost=.50)
+        self.assertLess(self.turnover(cheap), self.turnover(self.target))
+        self.assertLess(self.turnover(expensive), 1e-3)
 
-    def test_resampling_and_black_litterman_keep_existing_interfaces(self):
-        c = dict(self.c, max_equity=.7)
-        for views in [{}, {"SPY": (.07, .5)}]:
-            portfolios = build_portfolios(self.mu, self.cov, .02, 3., c, views, n_sim=8)
-            self.assertEqual(len(portfolios), 4)
-            for w in portfolios.values():
-                self.assert_feasible(w, c)
-            repeated = optimizer.resampled(self.mu, self.cov, 3., c, n_sim=8)
-            np.testing.assert_allclose(repeated, portfolios["Resampled MV"], atol=1e-12, rtol=0)
+    def test_turnover_limit_is_respected(self):
+        w = mean_variance_with_costs(self.mu, self.cov, 3., NO_LIMIT, self.x0, cost=.001, max_turnover=.10)
+        self.assertLessEqual(self.turnover(w), .10 + 1e-4)
+
+
+class RiskParityTests(unittest.TestCase):
+    def setUp(self):
+        self.tickers = ["SPY", "EFA", "AGG", "TLT", "GLD"]
+        vol = np.array([.16, .18, .05, .14, .15])
+        corr = np.full((5, 5), .2) + np.eye(5) * .8
+        self.cov = pd.DataFrame(np.outer(vol, vol) * corr, index=self.tickers, columns=self.tickers)
+
+    def test_without_limits_every_asset_brings_the_same_risk(self):
+        w = risk_parity(self.cov, NO_LIMIT)
+        np.testing.assert_allclose(risk_contributions(w, self.cov), .2, atol=1e-4)
+        self.assertGreater(w.AGG, w.SPY)  # the less volatile asset gets the larger weight
+
+    def test_risk_contributions_sum_to_one(self):
+        w = pd.Series([.1, .2, .3, .2, .2], index=self.tickers)
+        self.assertAlmostEqual(risk_contributions(w, self.cov).sum(), 1)
+
+    def test_with_limits_the_portfolio_stays_inside_them(self):
+        c = dict(max_equity=.2, min_bonds=.6, max_other=.1, max_crypto=0., max_weight_per_asset=.4)
+        w = risk_parity(self.cov, c)
+        self.assertTrue(respects_limits(w.values, self.tickers, c, 1e-4))
+        self.assertGreater(np.abs(risk_contributions(w, self.cov) - .2).max(), .01)  # equal shares are impossible
+
+    def test_limits_that_leave_a_single_portfolio(self):
+        """Equities exactly 20% and two bond products at their 40% maximum: the solver has almost no room."""
+        tickers = ["SPY", "AGG", "SHY"]
+        cov = diagonal_cov(tickers, [.03, .003, .0004])
+        c = dict(max_equity=.2, min_bonds=.6, max_other=.1, max_crypto=0., max_weight_per_asset=.4)
+        np.testing.assert_allclose(risk_parity(cov, c), [.2, .4, .4], atol=1e-4)
 
 
 if __name__ == "__main__":

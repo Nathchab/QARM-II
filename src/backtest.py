@@ -50,7 +50,9 @@ def run_backtest(returns, rf, tickers, benchmark, gamma, c, views, start, end,
         if i % rebalance == 0:  # ---------- rebalancing ----------
             past = returns[tickers].iloc[t - WINDOW:t]
             mu, cov, rf_now = past.mean() * 12, past.cov() * 12, rf.iloc[t - 1] * 12
-            targets = build_portfolios(mu, cov, rf_now, gamma, c, views, N_SIM)
+            targets, errors = build_portfolios(mu, cov, rf_now, gamma, c, views, N_SIM)
+            if errors:  # a method failed on this date: we stop and show its message
+                raise RuntimeError(list(errors.values())[0])
             targets["Benchmark"] = benchmark
 
             if not weights:  # first month: we buy everything with cash
