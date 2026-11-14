@@ -9,9 +9,12 @@ A Streamlit web app that works like a robo-advisor:
 3. **Your portfolio**: Black-Litterman (recommended; market equilibrium, plus views for experienced investors),
    Mean-Variance, Resampled Mean-Variance (Michaud) and Risk Parity (ERC). Weights, risk contributions, efficient frontier, beta,
    tracking error and a γ composition map.
-4. **Backtest**: out-of-sample comparison of the four methods, with transaction costs, a turnover limit and
-   optional cost-aware optimisation (LN3).
-5. **Time machine**: buy-and-hold replays of 2008, 2020 and 2022, compared with the loss the client said he
+4. **Your plan**: projection of the client's wealth with a monthly savings plan (5,000 simulated futures), probability
+   of reaching a savings goal and of a fall larger than the loss he accepts, the orders to place (number of shares
+   of each ETF), our 0.50% management fee, and a downloadable client report.
+5. **Backtest**: out-of-sample comparison of the four methods, with transaction costs, a turnover limit and
+   optional cost-aware optimisation (LN3), after our management fee.
+6. **Time machine**: buy-and-hold replays of 2008, 2020 and 2022, compared with the loss the client said he
    could tolerate.
 
 Everything can be shown in USD or CHF. Prices are downloaded from Yahoo Finance and kept in memory for one day.
@@ -107,6 +110,7 @@ src/black_litterman.py  equilibrium returns, absolute/relative views, posterior 
 src/portfolios.py       the four methods and the benchmarks
 src/backtest.py         out-of-sample backtest and performance measures
 src/time_machine.py     crisis replay
+src/planning.py         projection, savings goal, order list, management fee, client report
 src/app_helpers.py      small functions shared by the pages
 tests/                  profile, Black-Litterman and optimizer tests, and a test that opens every page
 ```

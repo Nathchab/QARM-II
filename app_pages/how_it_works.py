@@ -1,4 +1,4 @@
-"""Page 6: short explanation of the methods, data and limitations (useful for questions)."""
+"""Page 7: short explanation of the methods, data and limitations (useful for questions)."""
 import streamlit as st
 
 from src.black_litterman import CONFIDENCE_LEVELS, DELTA, TAU
@@ -87,7 +87,22 @@ st.header("4. Risk measures (lab LN2)")
 st.write("Beta with the covariance method β = cov(R_p, R_b) / var(R_b) and tracking error = volatility of "
          "R_p − R_b, both against the benchmark chosen by the client (by default: SPY up to the client's equity maximum, the rest in AGG).")
 
-st.header("5. Backtest with transaction costs (LN3)")
+st.header("5. Your plan")
+st.write("**Projection.** We simulate 5,000 possible futures of the portfolio, month by month (Monte Carlo, as for "
+         "the resampling of LN3). Each month the return is drawn from a normal distribution with the expected "
+         "return of Black-Litterman (equilibrium + views) minus our fee, and the volatility of the portfolio; "
+         "then the monthly contribution is added:")
+st.latex(r"W_{t+1} = W_t\,(1 + r_{t+1}) + \text{contribution}, \qquad "
+         r"r_{t+1} \sim N\!\left(\tfrac{\mu_p - \text{fee}}{12},\; \tfrac{\sigma_p^2}{12}\right)")
+st.write("We use the Black-Litterman returns for every method: projecting the returns of the last 5 years into the "
+         "future would be too optimistic or too pessimistic. The page shows the 5%, 50% and 95% percentiles of the "
+         "final wealth, the share of futures that reach the goal, and the share of futures where the portfolio "
+         "falls at some point by more than the loss accepted in QE2 (from a previous peak).")
+st.write("**Orders.** Amount × weight ÷ last price, rounded down to whole ETF shares (crypto: 0.0001 units); the rest "
+         "stays in cash. **Fee.** Our management fee is 0.50% per year; it is also taken in the backtest. "
+         "**Report.** A text file with the profile, limits, portfolio, plan, orders and warnings.")
+
+st.header("6. Backtest with transaction costs (LN3)")
 st.write("Out-of-sample: at each rebalancing we only use the past 60 months. Between rebalancings the weights "
          "drift with the markets. The client chooses the period, the benchmark, the rebalancing frequency, "
          "the cost and a turnover limit.")
@@ -100,11 +115,11 @@ st.latex(r"\text{s.t. } \textstyle\sum x_i + c^\top(\Delta x^- + \Delta x^+) = 1
 st.write("So the portfolio only trades when the gain is larger than the cost. Resampled MV and risk parity "
          "move towards their new target, but never trade more than the turnover limit τ⁺.")
 
-st.header("6. Time machine")
+st.header("7. Time machine")
 st.write("Buy and hold from the market peak of 2008, 2020 and 2022, compared with the largest temporary loss "
          "the client said (QE2) he could tolerate without abandoning the strategy.")
 
-st.header("7. Limitations")
+st.header("8. Limitations")
 st.markdown("""
 - Past returns are a noisy guess of future returns (this is why we offer Black-Litterman and resampling).
 - 60 months is a short window; a longer one is more stable but reacts slower.
@@ -114,6 +129,8 @@ st.markdown("""
 - We do not shrink the covariance matrix (Ledoit-Wolf): with about 10 products and 60 months, the estimation
   error of Σ is small compared to the error on μ. With many more products, shrinkage would become useful.
 - Bid-ask costs are the same for every product; in reality crypto and small markets cost more.
+- The projection assumes normal and independent monthly returns: real markets have more extreme months. The
+  fees of the ETFs themselves (TER) and inflation are not included.
 - The questionnaire scores, the capacity tiers and the γ anchors are modelling choices: they are calibrated to be
   consistent with QE3, not estimated on investor data.
 """)

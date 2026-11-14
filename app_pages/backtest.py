@@ -1,10 +1,11 @@
-"""Page 4: out-of-sample backtest of the 4 methods against a benchmark chosen by the client."""
+"""Page 5: out-of-sample backtest of the 4 methods against a benchmark chosen by the client."""
 import pandas as pd
 import plotly.express as px
 import streamlit as st
 
 from src.app_helpers import get_choices, get_currency, get_data, get_profile, get_views
 from src.backtest import N_SIM, performance, run_backtest
+from src.planning import MANAGEMENT_FEE
 from src.portfolios import BENCHMARKS, WINDOW, benchmark_weights
 
 profile = get_profile()
@@ -79,7 +80,7 @@ results = results.rename(columns={"Benchmark": f"Benchmark: {benchmark_name}"})
 turnover = turnover.rename(columns={"Benchmark": f"Benchmark: {benchmark_name}"})
 
 st.caption(f"From {results.index[0]:%B %Y} to {results.index[-1]:%B %Y}, in {currency}, after transaction "
-           f"costs. Black-Litterman uses your current views at every date. Resampled MV uses {N_SIM} "
+           f"costs and our management fee of {MANAGEMENT_FEE:.2%} per year (not taken from the benchmark). Black-Litterman uses your current views at every date. Resampled MV uses {N_SIM} "
            f"simulations per rebalancing (100 on the portfolio page).")
 
 # ---------- Growth of 100 ----------

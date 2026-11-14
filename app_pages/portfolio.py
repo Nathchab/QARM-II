@@ -196,3 +196,5 @@ if not front.empty and method != "Risk parity (ERC)":
     area.add_vline(x=profile.gamma, line_dash="dash")
     area.update_layout(yaxis_title="Weight", yaxis_tickformat=".0%", xaxis_title="γ (risk aversion)")
     st.plotly_chart(area)
+
+st.page_link("app_pages/plan.py", label="Next: your plan (projection, goal, orders, report)", icon="➡️")

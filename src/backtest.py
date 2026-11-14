@@ -5,6 +5,9 @@ At each rebalancing date we estimate returns and risk on the PAST 60 months only
 new weights. Between two rebalancings we hold the portfolio, so the weights drift with the
 markets. We never use future information.
 
+Our management fee (MANAGEMENT_FEE per year) is taken every month from our four portfolios, not from
+the benchmark: the client would not pay it if he bought the benchmark himself.
+
 Transaction costs, as in lecture LN3:
   - every trade costs `cost` (e.g. 0.10% of the amount traded), paid from the portfolio;
   - Mean-variance and Black-Litterman can be "cost-aware": they solve the LN3 problem with
@@ -16,6 +19,7 @@ import pandas as pd
 
 from src.black_litterman import posterior_returns, restrict_views
 from src.optimizer import mean_variance_with_costs
+from src.planning import MANAGEMENT_FEE
 from src.portfolios import WINDOW, build_portfolios
 
 N_SIM = 20  # fewer resampling simulations than on the portfolio page, so the backtest stays fast
@@ -79,7 +83,8 @@ def run_backtest(returns, rf, tickers, benchmark, gamma, c, views, start, end,
         # ---------- one month of returns ----------
         month = {}
         for name, w in weights.items():
-            month[name] = r[w.index] @ w - cost * traded.get(name, 0.0)  # return minus trading costs
+            fee = 0.0 if name == "Benchmark" else MANAGEMENT_FEE / 12
+            month[name] = r[w.index] @ w - cost * traded.get(name, 0.0) - fee  # return minus costs and fee
             weights[name] = w * (1 + r[w.index]) / (1 + r[w.index] @ w)  # the weights drift
         results[date] = month
 

@@ -1,4 +1,4 @@
-"""Page 5: time machine. Replay past crises with the client's portfolio."""
+"""Page 6: time machine. Replay past crises with the client's portfolio."""
 import pandas as pd
 import plotly.express as px
 import streamlit as st
