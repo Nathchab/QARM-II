@@ -64,7 +64,8 @@ def client_report(profile, c, method, weights, exp_return, vol, currency, plan, 
         "1. YOUR PROFILE",
         f"Risk tolerance: {profile.rt:.1f}/100 ({profile.label}), risk aversion gamma = {profile.gamma:.2f}",
         f"Financial capacity: {profile.capacity_label} ({profile.capacity_score}/9)",
-        f"Limits: equities max {pct(c['max_equity'])}, bonds min {pct(c['min_bonds'])}, gold and commodities max "
+        f"Limits: equities max {pct(c['max_equity'])}, bonds min {pct(c['min_bonds'])}, short-term Treasuries min "
+        f"{pct(c.get('min_short_term', 0))}, gold and commodities max "
         f"{pct(c['max_other'])}, crypto max {pct(c['max_crypto'])}, max {pct(c['max_weight_per_asset'])} per product",
         "",
         f"2. YOUR PORTFOLIO ({method})",

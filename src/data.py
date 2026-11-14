@@ -36,6 +36,8 @@ ASSETS = {
     "ETH-USD": ("Ethereum", "Crypto"),
 }
 
+SHORT_TERM = "SHY"  # where money that may be needed soon is kept: short-term Treasuries (almost no risk)
+
 FX = "CHF=X"   # number of CHF for 1 USD
 RF = "^IRX"    # 13-week US Treasury bill yield, in % per year
 

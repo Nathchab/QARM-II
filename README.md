@@ -46,7 +46,9 @@ reveals (tested in `tests/test_profile.py`).
 **Capacity → limits.** The capacity score gives a tier (Low, Limited, Moderate, High) with a maximum in
 equities, a minimum in bonds and maximums in gold/commodities and crypto. QD1 and QD2 give their own equity
 maximum and bond minimum; the most restrictive source applies. Low savings or heavy commitments cap the tier
-at Limited.
+at Limited. Money that may be needed soon (QD1 within 3 years, QD2 withdrawals of 10% or more) must be in
+short-term Treasuries (SHY), not in long bonds: minimum 60%/40% (QD1 a/b) and 50%/25%/10% (QD2 a/b/c).
+SHY is almost cash, so it may exceed the 40% maximum per product.
 
 **Why capacity does not change γ.** A γ floor from capacity *and* capacity-based limits would count the
 same information twice, and for most clients the tolerance answers would then change nothing. Here a
@@ -56,7 +58,10 @@ significant commitments, money needed within a year, likely withdrawals above 25
 one sentence with the equity/bond mix and volatility of its recommended portfolio.
 
 **Black-Litterman by default.** Without views, μ_BL = π, the market equilibrium returns: more stable than the
-60-month historical mean, so it is the recommended method for everybody. Only experienced investors (at least
+60-month historical mean, so it is the recommended method for everybody. For a client without views the app calls
+it "Market equilibrium (Black-Litterman)". **One forecast for every method:** the expected returns shown for all
+methods (and in the efficient frontier and the plan) use the same forecast μ_BL, so the methods can be compared;
+with this forecast the recommended portfolio is optimal, so no other method dominates it (the page checks it). Only experienced investors (at least
 2 years of investing, intermediate knowledge, and the correct answer to the diversification question QC3) who
 say they have convictions (QH4) can enter views: up to 5, absolute (“GLD will return 6%”) or relative (“EEM will
 beat SPY by 3%”), each with a confidence from QH6. The uncertainty is `Ω_kk = τ (PΣPᵀ)_kk (1 − c)/c`, and a view

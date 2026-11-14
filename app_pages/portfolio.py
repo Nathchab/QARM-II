@@ -6,12 +6,12 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from src.app_helpers import (get_benchmark, get_choices, get_currency, get_data, get_profile,
-                             get_valid_portfolios, get_views, show_profile_messages)
+                             get_valid_portfolios, get_views, method_label, show_profile_messages)
 from src.black_litterman import (CONFIDENCE_LEVELS, EXTREME_VIEW, MAX_VIEWS, market_weights, posterior_returns,
                                   prior_returns, restrict_views, view_check, view_problems)
-from src.data import ASSETS
+from src.data import ASSETS, SHORT_TERM
 from src.optimizer import beta, class_exposures, frontier, portfolio_stats, risk_contributions, tracking_error
-from src.portfolios import METHODS, RECOMMENDED_METHOD, WINDOW, estimate
+from src.portfolios import METHODS, RECOMMENDED_METHOD, WINDOW, dominated_by, estimate
 
 CLASS_COLORS = {"Equity": "#1f77b4", "Bond": "#2ca02c", "Other": "#ff7f0e", "Crypto": "#9467bd"}
 
@@ -33,7 +33,7 @@ past = returns[tickers].dropna().iloc[-WINDOW:]
 benchmark_returns = returns.loc[past.index, benchmark.index].fillna(0) @ benchmark
 
 method = st.radio("Choose a method", METHODS, horizontal=True,
-                  format_func=lambda m: f"{m} (recommended)" if m == RECOMMENDED_METHOD else m,
+                  format_func=lambda m: method_label(m) + (" – recommended" if m == RECOMMENDED_METHOD else ""),
                   index=METHODS.index(st.session_state.get("method", RECOMMENDED_METHOD)))
 st.session_state["method"] = method
 
@@ -41,9 +41,10 @@ st.session_state["method"] = method
 if method == "Black-Litterman":
     prior = prior_returns(cov, rf_now)
     st.subheader("Market equilibrium")
-    st.write("Black-Litterman starts from the **market equilibrium** returns π = r_f + δΣw_mkt: the returns that "
-             "make the world market portfolio optimal. They are much more stable than historical averages, "
-             "which is why this is our recommended method.")
+    st.write("Our forecast of the returns is the **market equilibrium** π = r_f + δΣw_mkt: the returns that make "
+             "the market portfolio optimal, i.e. what the market as a whole expects for the risk of each product. "
+             "Without personal views, Black-Litterman simply uses these returns. They are much more stable than "
+             "the average of the last 5 years, which is why this is our recommended method.")
     st.dataframe(pd.DataFrame({
         "Product": [ASSETS[t][0] for t in mu.index],
         "Market weight": market_weights(mu.index),
@@ -111,15 +112,16 @@ if method not in portfolios:
     st.info(f"Showing {method} instead.")
 weights = portfolios[method]
 
-# Expected returns used by this method (Black-Litterman has its own)
-mu_method = (posterior_returns(cov, rf_now, restrict_views(get_views(), mu.index))
-             if method == "Black-Litterman" else mu)
+# ONE forecast of the expected returns for every method, so that the portfolios can be compared:
+# the market equilibrium (plus the client's views). The average of the last 60 months is NOT a forecast.
+forecast = posterior_returns(cov, rf_now, restrict_views(get_views(), mu.index))
 
 # ---------- Key numbers ----------
-ret, vol = portfolio_stats(weights, mu_method, cov)
+ret, vol = portfolio_stats(weights, forecast, cov)
 exposure = class_exposures(weights)
 col1, col2, col3, col4 = st.columns(4)
-col1.metric("Expected return", f"{ret:.1%}")
+col1.metric("Expected return", f"{ret:.1%}", help="With our forecast (market equilibrium + your views), "
+            "before our fee. The same forecast is used for every method.")
 col2.metric("Volatility", f"{vol:.1%}")
 col3.metric("Sharpe ratio", f"{(ret - rf_now) / vol:.2f}" if vol > 0 else "–")
 col4.metric("Beta vs benchmark", f"{beta(past @ weights, benchmark_returns):.2f}",
@@ -134,6 +136,8 @@ LIMITS = {"max_equity": ("Equity", "maximum in equities"), "min_bonds": ("Bond",
           "max_other": ("Other", "maximum in gold and commodities"), "max_crypto": ("Crypto", "maximum in crypto")}
 binding = [name for key, (kind, name) in LIMITS.items()
            if abs(exposure[kind] - c[key]) <= 1e-6 and not (key in ("min_bonds", "max_crypto") and c[key] == 0)]
+if c.get("min_short_term", 0) > 0 and abs(weights.get(SHORT_TERM, 0) - c["min_short_term"]) <= 1e-6:
+    binding.append("minimum in short-term Treasuries")
 if binding and method != "Risk parity (ERC)":
     st.caption("Your limits are binding: " + ", ".join(binding) + ". Without them, the "
                "optimiser would choose a different mix for your γ.")
@@ -154,44 +158,60 @@ col2.plotly_chart(px.bar(table, x=table.index, y="Risk contribution", color="Cla
                          title="Where does the risk come from?",
                          text_auto=".0%").update_layout(yaxis_tickformat=".0%", xaxis_title=None))
 
-# ---------- Efficient frontier ----------
+# ---------- Is the recommended portfolio efficient? ----------
+better = dominated_by(portfolios, forecast, cov, RECOMMENDED_METHOD) if RECOMMENDED_METHOD in portfolios else []
+if better:
+    st.warning(f"With our forecast, {', '.join(method_label(m) for m in better)} gives a higher expected return "
+               f"with less risk than {method_label(RECOMMENDED_METHOD)}: choose it instead.")
+else:
+    st.success(f"{method_label(RECOMMENDED_METHOD)} is efficient: with our forecast, no other method gives a higher "
+               "expected return with less risk (it is the optimal portfolio for your γ and your limits).")
+
+# ---------- Efficient frontier: all methods with the same forecast ----------
 try:
-    front = frontier(mu_method, cov, c)
+    front = frontier(forecast, cov, c)
 except (ValueError, RuntimeError, np.linalg.LinAlgError):
     front = pd.DataFrame()
     st.caption("The efficient frontier could not be calculated with these inputs.")
 fig = go.Figure()
 if not front.empty:
-    fig.add_scatter(x=front["Volatility"], y=front["Return"], mode="lines", name="Efficient frontier (your constraints)")
-fig.add_scatter(x=np.sqrt(np.diag(cov)), y=mu_method, mode="markers+text", text=list(mu.index),
-                textposition="top center", name="Single products")
-fig.add_scatter(x=[vol], y=[ret], mode="markers", marker=dict(size=16, symbol="star"), name="Your portfolio")
-fig.update_layout(title="Efficient frontier", xaxis_title="Volatility", yaxis_title="Expected return",
-                  xaxis_tickformat=".0%", yaxis_tickformat=".0%")
+    fig.add_scatter(x=front["Volatility"], y=front["Return"], mode="lines", name="Efficient frontier (your limits)")
+fig.add_scatter(x=np.sqrt(np.diag(cov)), y=forecast, mode="markers+text", text=list(mu.index),
+                textposition="top center", name="Single products", marker=dict(color="lightgrey"))
+for m, w in portfolios.items():
+    r, v = portfolio_stats(w, forecast, cov)
+    fig.add_scatter(x=[v], y=[r], mode="markers", name=method_label(m),
+                    marker=dict(size=18 if m == method else 11, symbol="star" if m == method else "circle"))
+fig.update_layout(title="Efficient frontier with our forecast (the star is the method you selected)",
+                  xaxis_title="Volatility", yaxis_title="Expected return", xaxis_tickformat=".0%", yaxis_tickformat=".1%")
 st.plotly_chart(fig)
-if method == "Risk parity (ERC)":
-    st.caption("Risk parity does not use expected returns nor γ, so it is usually below the frontier: "
-               "it gives up some expected return to spread the risk.")
+st.caption("Mean-variance and resampled mean-variance trust the average returns of the last 5 years, so with our "
+           "forecast they are below the frontier. Risk parity uses no expected returns at all: it gives up some "
+           "expected return to spread the risk.")
 
 # ---------- Compare the 4 methods ----------
 st.subheader("Compare the methods")
 compare = pd.DataFrame(portfolios)
 compare.index = [f"{t} ({ASSETS[t][0]})" for t in compare.index]
-stats = pd.DataFrame({m: {"Expected return (historical μ)": portfolio_stats(w, mu, cov)[0],
-                          "Volatility": portfolio_stats(w, mu, cov)[1],
+stats = pd.DataFrame({m: {"Expected return (our forecast)": portfolio_stats(w, forecast, cov)[0],
+                          "Volatility": portfolio_stats(w, forecast, cov)[1],
+                          f"Average return of the last {WINDOW} months (past)": portfolio_stats(w, mu, cov)[0],
                           "Beta vs benchmark": beta(past @ w, benchmark_returns),
                           "Tracking error vs benchmark": tracking_error(past @ w, benchmark_returns)}
                       for m, w in portfolios.items()})
-st.dataframe(pd.concat([compare, stats]).style.format("{:.1%}").format(
-    "{:.2f}", subset=pd.IndexSlice[["Beta vs benchmark"], :]))
+table = pd.concat([compare, stats])
+table.columns = [method_label(m) for m in table.columns]
+st.dataframe(table.style.format("{:.1%}").format("{:.2f}", subset=pd.IndexSlice[["Beta vs benchmark"], :]))
 st.caption(f"Benchmark: {benchmark_name}. Beta and tracking error (lab LN2) on the last {WINDOW} months. "
-           "Expected returns use the same historical estimates for every method, so they can be compared.")
+           f"The past average is not a forecast: mean-variance was built to be the best portfolio for exactly these "
+           "past returns, so of course it looks best on them. The backtest (page 5) compares the methods fairly, "
+           "out of sample.")
 
 # ---------- Composition map (lab LN3): sensitivity to gamma ----------
-if not front.empty and method != "Risk parity (ERC)":
+if not front.empty:
     st.subheader("What if your γ was different?")
-    st.write("Composition map (as in lab LN3): the optimal mean-variance weights for every γ, with your "
-             "constraints and the expected returns of the method. The dashed line is your γ.")
+    st.write("Composition map (as in lab LN3): the optimal weights for every γ, with your limits and our forecast "
+             "(this is the recommended method). The dashed line is your γ.")
     area = px.area(front, x="Gamma", y=list(mu.index), log_x=True)
     area.add_vline(x=profile.gamma, line_dash="dash")
     area.update_layout(yaxis_title="Weight", yaxis_tickformat=".0%", xaxis_title="γ (risk aversion)")

@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from src.app_helpers import get_choices, get_currency, get_data, get_profile, get_views
+from src.app_helpers import get_choices, get_currency, get_data, get_profile, get_views, method_label
 from src.backtest import N_SIM, performance, run_backtest
 from src.planning import MANAGEMENT_FEE
 from src.portfolios import BENCHMARKS, WINDOW, benchmark_weights
@@ -76,8 +76,8 @@ with st.spinner("Running the backtest (10 to 60 seconds the first time)..."):
 if len(results) < 12:
     st.error("The period is too short (or the benchmark has no data on it). Choose a longer period.")
     st.stop()
-results = results.rename(columns={"Benchmark": f"Benchmark: {benchmark_name}"})
-turnover = turnover.rename(columns={"Benchmark": f"Benchmark: {benchmark_name}"})
+names = {m: method_label(m) for m in results.columns} | {"Benchmark": f"Benchmark: {benchmark_name}"}
+results, turnover = results.rename(columns=names), turnover.rename(columns=names)
 
 st.caption(f"From {results.index[0]:%B %Y} to {results.index[-1]:%B %Y}, in {currency}, after transaction "
            f"costs and our management fee of {MANAGEMENT_FEE:.2%} per year (not taken from the benchmark). Black-Litterman uses your current views at every date. Resampled MV uses {N_SIM} "
@@ -106,7 +106,7 @@ st.plotly_chart(fig)
 
 # ---------- Weights over time ----------
 st.subheader("How did the weights change over time?")
-method = st.selectbox("Method", list(weights_history)[:-1])
-area = px.area(weights_history[method], title=f"Weights of {method} at each rebalancing")
+method = st.selectbox("Method", list(weights_history)[:-1], format_func=method_label)
+area = px.area(weights_history[method], title=f"Weights of {method_label(method)} at each rebalancing")
 area.update_layout(yaxis_tickformat=".0%", yaxis_title="Weight", xaxis_title=None, legend_title=None)
 st.plotly_chart(area)

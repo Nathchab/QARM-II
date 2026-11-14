@@ -62,6 +62,8 @@ col1, col2 = st.columns(2)
 c = {
     "max_equity": slider(col1, "Maximum in equities", "max_equity", 0, rec_c["max_equity"], saved_c["max_equity"], 5),
     "min_bonds": slider(col2, "Minimum in bonds", "min_bonds", rec_c["min_bonds"], 1, saved_c["min_bonds"], 5),
+    "min_short_term": slider(col2, "Minimum in short-term Treasuries (SHY)", "min_short_term", rec_c["min_short_term"],
+                             max(rec_c["min_short_term"], rec_c["max_weight_per_asset"]), saved_c["min_short_term"], 5),
     "max_other": slider(col1, "Maximum in gold and commodities", "max_other", 0, rec_c["max_other"],
                         saved_c["max_other"], 5),
     "max_crypto": slider(col2, "Maximum in crypto", "max_crypto", 0, rec_c["max_crypto"], saved_c["max_crypto"], 1),
@@ -73,7 +75,7 @@ c = {
 st.session_state["assets"] = tickers
 st.session_state["constraints"] = c
 
-stricter = [label for key, label in [("max_equity", "equities"), ("min_bonds", "bonds"),
+stricter = [label for key, label in [("max_equity", "equities"), ("min_bonds", "bonds"), ("min_short_term", "short-term"),
                                       ("max_other", "gold and commodities"), ("max_crypto", "crypto"),
                                       ("max_weight_per_asset", "maximum per product")] if c[key] != rec_c[key]]
 if stricter:

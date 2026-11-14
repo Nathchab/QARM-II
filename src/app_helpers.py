@@ -5,12 +5,12 @@ import streamlit as st
 
 from src.data import available_assets, load_prices, monthly_returns, risk_free
 from src.optimizer import check_constraints, class_exposures
-from src.portfolios import BENCHMARKS, RECOMMENDED_METHOD, benchmark_weights, build_portfolios, estimate
+from src.portfolios import BENCHMARKS, RECOMMENDED_METHOD, benchmark_weights, build_portfolios, estimate, method_name
 
 
 def tighten(profile_limits, chosen):
     """The client can make the profile limits stricter, never looser."""
-    return {key: max(limit, chosen.get(key, limit)) if key == "min_bonds" else min(limit, chosen.get(key, limit))
+    return {key: max(limit, chosen.get(key, limit)) if key.startswith("min_") else min(limit, chosen.get(key, limit))
             for key, limit in profile_limits.items()}
 
 
@@ -57,6 +57,11 @@ def get_views():
     if profile is None or not profile.wants_views:
         return ()
     return tuple(st.session_state.get("views", ()))
+
+
+def method_label(method):
+    """Name of a method for the client (Black-Litterman without views = market equilibrium)."""
+    return method_name(method, get_views())
 
 
 def get_benchmark(tickers, c):

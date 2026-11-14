@@ -1,0 +1,46 @@
+"""The recommended portfolio: name shown to the client and efficiency with our forecast."""
+import unittest
+
+import numpy as np
+import pandas as pd
+
+from src.black_litterman import posterior_returns
+from src.optimizer import portfolio_stats
+from src.portfolios import build_portfolios, dominated_by, method_name, recommended_method
+
+TICKERS = ["SPY", "EFA", "AGG", "TLT", "SHY", "GLD"]
+VOL = np.array([.16, .17, .05, .14, .02, .15])
+CORR = np.full((6, 6), .3) + np.eye(6) * .7
+COV = pd.DataFrame(np.outer(VOL, VOL) * CORR, index=TICKERS, columns=TICKERS)
+PAST = pd.Series([.11, .07, -.02, -.10, .01, .14], index=TICKERS)  # noisy "last 5 years"
+LIMITS = dict(max_equity=.5, min_bonds=.3, min_short_term=.1, max_other=.15, max_crypto=0., max_weight_per_asset=.4)
+
+
+class RecommendationTests(unittest.TestCase):
+    def test_black_litterman_without_views_is_called_market_equilibrium(self):
+        self.assertEqual(method_name("Black-Litterman", ()), "Market equilibrium (Black-Litterman)")
+        self.assertEqual(method_name("Black-Litterman", (("SPY", None, .08, .5),)), "Black-Litterman with your views")
+        self.assertEqual(method_name("Mean-variance", ()), "Mean-variance")
+
+    def test_recommended_portfolio_is_never_dominated_with_our_forecast(self):
+        forecast = posterior_returns(COV, .01, ())
+        for gamma in [1.06, 2.7, 6., 10.6]:
+            portfolios, errors = build_portfolios(PAST, COV, .01, gamma, LIMITS, (), n_sim=10)
+            self.assertEqual(errors, {})
+            self.assertEqual(dominated_by(portfolios, forecast, COV, "Black-Litterman"), [], gamma)
+            self.assertEqual(recommended_method(portfolios, forecast, COV), "Black-Litterman")
+            self.assertGreaterEqual(portfolios["Black-Litterman"]["SHY"], .1 - 1e-6)  # money needed soon
+
+    def test_a_dominated_recommendation_is_replaced_by_the_dominating_one(self):
+        """AGG has a higher return than SPY with the same risk: 60/40 beats 70/30 (more return AND less risk)."""
+        forecast = pd.Series([.03, .06], index=["SPY", "AGG"])
+        cov = pd.DataFrame(np.diag([.04, .04]), index=forecast.index, columns=forecast.index)
+        portfolios = {"Black-Litterman": pd.Series([.7, .3], index=forecast.index),
+                      "Mean-variance": pd.Series([.6, .4], index=forecast.index),
+                      "Risk parity (ERC)": pd.Series([.9, .1], index=forecast.index)}
+        self.assertEqual(dominated_by(portfolios, forecast, cov, "Black-Litterman"), ["Mean-variance"])
+        self.assertEqual(recommended_method(portfolios, forecast, cov), "Mean-variance")
+
+
+if __name__ == "__main__":
+    unittest.main()

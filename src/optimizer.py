@@ -4,13 +4,13 @@ The structure follows our labs (QP function, LinearConstraint, scipy minimize).
 
 All inputs are annual and are pandas objects:
 mu = expected returns (Series), cov = covariance matrix (DataFrame).
-c = the client's constraints: max_equity, min_bonds, max_other, max_crypto, max_weight_per_asset.
+c = the client's constraints: max_equity, min_bonds, min_short_term, max_other, max_crypto, max_weight_per_asset.
 """
 import numpy as np
 import pandas as pd
 from scipy.optimize import LinearConstraint, linprog, minimize
 
-from src.data import ASSETS
+from src.data import ASSETS, SHORT_TERM
 
 CLASSES = ["Equity", "Bond", "Other", "Crypto"]
 
@@ -25,17 +25,23 @@ def class_rows(tickers, extra_variables=0):
 def client_constraints(tickers, c, extra_variables=0):
     """LN3 'asset class constraints' written as LinearConstraint (as in the labs)."""
     rows = class_rows(tickers, extra_variables)
-    return [
+    rules = [
         LinearConstraint(rows["Equity"], ub=c["max_equity"]),  # maximum in equities
         LinearConstraint(rows["Bond"], lb=c["min_bonds"]),     # minimum in bonds
         LinearConstraint(rows["Other"], ub=c["max_other"]),    # maximum in gold and commodities
         LinearConstraint(rows["Crypto"], ub=c["max_crypto"]),  # maximum in crypto
     ]
+    if c.get("min_short_term", 0) > 0:  # money that may be needed soon: minimum in short-term Treasuries
+        short = np.array([float(t == SHORT_TERM) for t in tickers] + [0.0] * extra_variables)
+        rules.append(LinearConstraint(short, lb=c["min_short_term"]))
+    return rules
 
 
 def weight_bounds(tickers, c):
-    """No short selling and maximum weight per product: 0 <= x_i <= max."""
-    return [(0, c["max_weight_per_asset"])] * len(tickers)
+    """No short selling and maximum weight per product: 0 <= x_i <= max.
+    SHY is almost cash: it can hold more than the maximum per product if the client needs it (min_short_term)."""
+    cap = c["max_weight_per_asset"]
+    return [(0, max(cap, c.get("min_short_term", 0)) if t == SHORT_TERM else cap) for t in tickers]
 
 
 def class_exposures(weights):
@@ -45,9 +51,11 @@ def class_exposures(weights):
 
 def respects_limits(x, tickers, c, tolerance=1e-9):
     """True if the weights x are long-only, fully invested and inside the client's limits."""
-    exposure = class_exposures(pd.Series(x, index=tickers))
+    weights = pd.Series(x, index=tickers)
+    exposure = class_exposures(weights)
     return bool(abs(np.sum(x) - 1) <= tolerance
-                and np.min(x) >= -tolerance and np.max(x) <= c["max_weight_per_asset"] + tolerance
+                and weights.get(SHORT_TERM, 0.0) >= c.get("min_short_term", 0) - tolerance
+                and all(lo - tolerance <= w <= hi + tolerance for w, (lo, hi) in zip(x, weight_bounds(tickers, c)))
                 and exposure["Equity"] <= c["max_equity"] + tolerance
                 and exposure["Bond"] >= c["min_bonds"] - tolerance
                 and exposure["Other"] <= c["max_other"] + tolerance
@@ -58,9 +66,10 @@ def feasible_portfolio(tickers, c):
     """Any portfolio that respects the limits, or None if there is none.
     Found with a linear programme written as in LN3: S x <= T, sum(x) = 1, 0 <= x <= max weight."""
     rows = class_rows(tickers)
+    short = np.array([float(t == SHORT_TERM) for t in tickers])
     result = linprog(np.zeros(len(tickers)),
-                     A_ub=[rows["Equity"], -rows["Bond"], rows["Other"], rows["Crypto"]],
-                     b_ub=[c["max_equity"], -c["min_bonds"], c["max_other"], c["max_crypto"]],
+                     A_ub=[rows["Equity"], -rows["Bond"], rows["Other"], rows["Crypto"], -short],
+                     b_ub=[c["max_equity"], -c["min_bonds"], c["max_other"], c["max_crypto"], -c.get("min_short_term", 0)],
                      A_eq=[np.ones(len(tickers))], b_eq=[1.0], bounds=weight_bounds(tickers, c))
     return result.x if result.success else None
 
@@ -72,9 +81,10 @@ def check_constraints(tickers, c):
     if feasible_portfolio(tickers, c) is not None:
         return []
     # Explain why: how much can each asset class hold at most?
-    w = c["max_weight_per_asset"]
-    room = {k: sum(ASSETS[t][1] == k for t in tickers) * w for k in CLASSES}
+    room = {k: sum(hi for t, (lo, hi) in zip(tickers, weight_bounds(tickers, c)) if ASSETS[t][1] == k) for k in CLASSES}
     problems = []
+    if c.get("min_short_term", 0) > 0 and SHORT_TERM not in tickers:
+        problems.append(f"You need at least {c['min_short_term']:.0%} in short-term Treasuries: keep {SHORT_TERM}.")
     if room["Bond"] < c["min_bonds"] - 1e-9:
         problems.append(f"Your bond products can hold at most {room['Bond']:.0%}, below the minimum of "
                         f"{c['min_bonds']:.0%} in bonds: add bond products.")

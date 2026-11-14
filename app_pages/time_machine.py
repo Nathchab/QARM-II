@@ -3,7 +3,8 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from src.app_helpers import get_benchmark, get_choices, get_currency, get_data, get_profile, get_valid_portfolios, get_views
+from src.app_helpers import (get_benchmark, get_choices, get_currency, get_data, get_profile, get_valid_portfolios,
+                             get_views, method_label)
 from src.portfolios import METHODS
 from src.time_machine import CRISES, crisis_summary, replay
 
@@ -24,7 +25,8 @@ col1, col2, col3 = st.columns(3)
 crisis = col1.selectbox("Crisis", list(CRISES))
 methods = [m for m in METHODS if m in portfolios]
 selected = st.session_state.get("method", methods[0])
-method = col2.selectbox("Your portfolio", methods, index=methods.index(selected) if selected in methods else 0)
+method = col2.selectbox("Your portfolio", methods, index=methods.index(selected) if selected in methods else 0,
+                        format_func=method_label)
 amount = col3.number_input(f"Amount invested ({currency})", min_value=1000, value=100_000, step=10_000)
 
 start, end, story = CRISES[crisis]
@@ -34,7 +36,7 @@ st.info(f"**{crisis}** ({pd.Timestamp(start):%b %Y} → {pd.Timestamp(end):%b %Y
 show_until = pd.Timestamp(end) + pd.DateOffset(years=1)
 paths = pd.DataFrame({name: amount * replay(prices, portfolios[name], start, show_until)
                       for name in [method, "Benchmark"]})
-paths = paths.rename(columns={"Benchmark": f"Benchmark: {benchmark_name}"})
+paths = paths.rename(columns={method: method_label(method), "Benchmark": f"Benchmark: {benchmark_name}"})
 fig = px.line(paths, title=f"Your {amount:,.0f} {currency} during the crisis (and one year after)")
 fig.add_vline(x=pd.Timestamp(end), line_dash="dash")
 fig.update_layout(yaxis_title=currency, xaxis_title=None, legend_title=None)
@@ -69,5 +71,5 @@ for name, w in portfolios.items():
         l, m = crisis_summary(prices, w, s, e)
         row[f"{crisis_name}: worst loss"] = f"{l:.1%}"
         row[f"{crisis_name}: months to recover"] = "not yet" if m is None else str(m)
-    rows[name] = row
+    rows[method_label(name) if name != "Benchmark" else f"Benchmark: {benchmark_name}"] = row
 st.dataframe(pd.DataFrame(rows).T)

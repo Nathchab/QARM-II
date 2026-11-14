@@ -33,6 +33,15 @@ class MeanVarianceTests(unittest.TestCase):
         np.testing.assert_allclose(w, [.2, .3, .4, .1], atol=1e-6)
         self.assertTrue(respects_limits(w.values, tickers, c))
 
+    def test_minimum_in_short_term_treasuries(self):
+        tickers = ["SPY", "TLT", "SHY"]
+        mu = pd.Series([.08, .04, .01], index=tickers)
+        cov = diagonal_cov(tickers, [.04, .02, .0004])
+        c = dict(NO_LIMIT, min_bonds=.5, min_short_term=.3)
+        w = mean_variance(mu, cov, 1., c)
+        self.assertAlmostEqual(w.SHY, .3, places=6)  # SHY has the lowest return: exactly the minimum
+        self.assertIn("SHY", check_constraints(["SPY", "TLT"], c)[0])  # SHY missing: explained
+
     def test_same_units_for_mu_and_cov_do_not_matter(self):
         mu = pd.Series([.08, .03, .05], index=["SPY", "AGG", "GLD"])
         cov = diagonal_cov(mu.index, [.04, .01, .03])

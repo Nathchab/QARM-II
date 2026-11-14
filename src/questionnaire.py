@@ -46,20 +46,22 @@ QE3_PROFILES = {"a": (0.05, 0.05), "b": (0.08, 0.10), "c": (0.12, 0.20), "d": (0
 # QE2 as a number, for the time machine (None = the client accepts more than 30%)
 QE2_MAX_LOSS = {"a": -0.05, "b": -0.10, "c": -0.20, "d": -0.30, "e": None}
 
-# ---------- D. Horizon and liquidity: (text, (max equity, min bonds)) ----------
+# ---------- D. Horizon and liquidity: (text, (max equity, min bonds, min in short-term Treasuries)) ----------
+# Money that may be needed soon must be in short-term Treasuries (SHY), not in long bonds: a 20-year bond can
+# lose a lot when rates rise (TLT lost about 30% in 2022). The SHY minimum is the share the client may need.
 HORIZON = {
     "QD1": ("When do you expect to need a substantial part of this capital?", options(
-        ("Within 1 year", (0.2, 0.6)),
-        ("In 1–3 years", (0.4, 0.4)),
-        ("In 3–5 years", (0.6, 0.2)),
-        ("In 5–10 years", (0.8, 0.0)),
-        ("In more than 10 years", (1.0, 0.0)))),
+        ("Within 1 year", (0.2, 0.6, 0.6)),
+        ("In 1–3 years", (0.4, 0.4, 0.4)),
+        ("In 3–5 years", (0.6, 0.2, 0.0)),
+        ("In 5–10 years", (0.8, 0.0, 0.0)),
+        ("In more than 10 years", (1.0, 0.0, 0.0)))),
     "QD2": ("What share might you need to withdraw unexpectedly in the next 12 months?", options(
-        ("More than 50%", (0.2, 0.6)),
-        ("25–50%", (0.4, 0.4)),
-        ("10–25%", (0.6, 0.2)),
-        ("Less than 10%", (0.8, 0.0)),
-        ("None, this money is fully long term", (1.0, 0.0)))),
+        ("More than 50%", (0.2, 0.6, 0.5)),
+        ("25–50%", (0.4, 0.4, 0.25)),
+        ("10–25%", (0.6, 0.2, 0.10)),
+        ("Less than 10%", (0.8, 0.0, 0.0)),
+        ("None, this money is fully long term", (1.0, 0.0, 0.0)))),
 }
 
 # ---------- Financial situation: (text, capacity points) ----------

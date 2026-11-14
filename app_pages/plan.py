@@ -3,7 +3,8 @@ import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
 
-from src.app_helpers import get_choices, get_currency, get_data, get_profile, get_valid_portfolios, get_views
+from src.app_helpers import (get_choices, get_currency, get_data, get_profile, get_valid_portfolios, get_views,
+                             method_label)
 from src.black_litterman import posterior_returns, restrict_views
 from src.optimizer import portfolio_stats
 from src.planning import (HORIZON_YEARS, MANAGEMENT_FEE, client_report, order_list, simulate_wealth,
@@ -23,7 +24,8 @@ st.write("What could your portfolio become, and what do you buy today?")
 methods = [m for m in METHODS if m in portfolios]
 saved = st.session_state.get("method", methods[0])
 col1, col2, col3 = st.columns(3)
-method = col1.selectbox("Portfolio", methods, index=methods.index(saved) if saved in methods else 0)
+method = col1.selectbox("Portfolio", methods, index=methods.index(saved) if saved in methods else 0,
+                        format_func=method_label)
 initial = col2.number_input(f"Initial amount ({currency})", min_value=1_000, value=100_000, step=10_000)
 monthly = col3.number_input(f"Monthly contribution ({currency})", min_value=0, value=500, step=100)
 years = col1.slider("Horizon (years)", 1, 40, HORIZON_YEARS[profile.answers["QD1"]],
@@ -87,5 +89,5 @@ st.caption(f"Prices of {prices.index[-1]:%d %B %Y}. ETFs are bought in whole sha
                                                      "last USD/CHF rate." if currency == "CHF" else ""))
 
 # ---------- Report ----------
-report = client_report(profile, c, method, weights, exp_return, vol, currency, plan, orders, cash)
+report = client_report(profile, c, method_label(method), weights, exp_return, vol, currency, plan, orders, cash)
 st.download_button("📄 Download my report", report, file_name="robo_advisor_report.txt", type="primary")

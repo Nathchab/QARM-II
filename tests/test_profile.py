@@ -110,6 +110,15 @@ class CapacityTests(unittest.TestCase):
         self.assertIn("AGG", p.added_assets)
         self.assertEqual(check_constraints(p.recommended_assets, p.recommended_constraints), [])
 
+    def test_money_needed_soon_goes_to_short_term_treasuries(self):
+        self.assertEqual(profile().recommended_constraints["min_short_term"], 0.0)  # long-term money
+        self.assertEqual(profile(QD2="c").recommended_constraints["min_short_term"], 0.10)
+        self.assertEqual(profile(QD1="a").recommended_constraints["min_short_term"], 0.60)
+        p = profile(QF1=["a", "b"], QD1="b")  # SHY not chosen, but money needed in 1-3 years
+        self.assertEqual(p.recommended_constraints["min_short_term"], 0.40)
+        self.assertIn("SHY", p.added_assets)
+        self.assertEqual(check_constraints(p.recommended_assets, p.recommended_constraints), [])
+
     def test_missing_answer_is_rejected(self):
         answers = dict(BASE)
         del answers["QE3"]

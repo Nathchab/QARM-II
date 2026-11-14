@@ -7,7 +7,7 @@ import pandas as pd
 
 from src.black_litterman import market_weights, posterior_returns, restrict_views
 from src.data import ASSETS
-from src.optimizer import mean_variance, resampled, risk_parity
+from src.optimizer import mean_variance, portfolio_stats, resampled, risk_parity
 
 WINDOW = 60  # we estimate returns and risk on the last 60 months (5 years)
 METHODS = ["Black-Litterman", "Mean-variance", "Resampled MV", "Risk parity (ERC)"]
@@ -43,6 +43,36 @@ def build_portfolios(mu, cov, rf, gamma, c, views, n_sim=100):
         except (ValueError, RuntimeError, np.linalg.LinAlgError) as error:
             errors[name] = str(error)
     return portfolios, errors
+
+
+def method_name(method, views):
+    """Name shown to the client: Black-Litterman without views is simply the market equilibrium."""
+    if method == "Black-Litterman":
+        return "Black-Litterman with your views" if views else "Market equilibrium (Black-Litterman)"
+    return method
+
+
+def dominated_by(portfolios, forecast, cov, method):
+    """Methods whose portfolio has a higher expected return AND a lower risk than `method`, with our forecast."""
+    ret, vol = portfolio_stats(portfolios[method], forecast, cov)
+    better = []
+    for other, w in portfolios.items():
+        r, v = portfolio_stats(w, forecast, cov)
+        if r >= ret - 1e-9 and v <= vol + 1e-9 and (r > ret + 1e-6 or v < vol - 1e-6):
+            better.append(other)
+    return better
+
+
+def recommended_method(portfolios, forecast, cov):
+    """Black-Litterman, unless another method dominates it: then the dominating method with the closest risk.
+    (With our forecast, Black-Litterman is the optimal portfolio, so in practice it is never dominated.)"""
+    if RECOMMENDED_METHOD not in portfolios:
+        return next(iter(portfolios))
+    better = dominated_by(portfolios, forecast, cov, RECOMMENDED_METHOD)
+    if not better:
+        return RECOMMENDED_METHOD
+    vol = portfolio_stats(portfolios[RECOMMENDED_METHOD], forecast, cov)[1]
+    return min(better, key=lambda m: abs(portfolio_stats(portfolios[m], forecast, cov)[1] - vol))
 
 
 def benchmark_weights(name, tickers, c):

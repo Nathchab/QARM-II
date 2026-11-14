@@ -17,7 +17,7 @@ Two separate dimensions, each with its own job:
 Result: a tolerant client with a low capacity gets the most dynamic portfolio *inside* the
 limits that his situation allows. The limits are a "box", gamma chooses the point in the box.
 """
-from src.data import ASSETS
+from src.data import ASSETS, SHORT_TERM
 from src.optimizer import check_constraints
 from src.questionnaire import (CRYPTO_CAP, CRYPTO_CHOICE, HORIZON, QE2_MAX_LOSS, QE3_PROFILES, UNIVERSE,
                                VIEWS_QUESTION, capacity_score, is_experienced, missing_answers,
@@ -101,23 +101,25 @@ class ClientProfile:
         self.capacity_score = capacity_score(a)
         (self.capacity_label, cap_equity, cap_bonds, max_other, cap_crypto), self.safeguard = \
             capacity_tier(self.capacity_score, a)
-        sources = {  # name of the source -> (maximum in equities, minimum in bonds)
-            f"financial capacity ({self.capacity_label})": (cap_equity, cap_bonds),
+        sources = {  # name of the source -> (maximum in equities, minimum in bonds, minimum in short-term)
+            f"financial capacity ({self.capacity_label})": (cap_equity, cap_bonds, 0.0),
             "your horizon (QD1)": HORIZON["QD1"][1][a["QD1"]][1],
             "possible withdrawals (QD2)": HORIZON["QD2"][1][a["QD2"]][1],
         }
         max_equity = min(v[0] for v in sources.values())
         min_bonds = max(v[1] for v in sources.values())
+        min_short_term = max(v[2] for v in sources.values())
         wants_crypto = CRYPTO_CHOICE in a["QF1"]
         if a["QD1"] not in ("d", "e") or a["QD2"] not in ("d", "e"):
             cap_crypto = 0.0  # no crypto for money needed within 5 years or likely to be withdrawn
         max_crypto = min(cap_crypto, CRYPTO_CAP[1][a["QF2"]][1]) if wants_crypto else 0.0
         c = self.recommended_constraints = {"max_equity": max_equity, "min_bonds": min_bonds,
-                                            "max_other": max_other, "max_crypto": max_crypto,
-                                            "max_weight_per_asset": MAX_WEIGHT_PER_ASSET}
+                                            "min_short_term": min_short_term, "max_other": max_other,
+                                            "max_crypto": max_crypto, "max_weight_per_asset": MAX_WEIGHT_PER_ASSET}
         self.limit_sources = {  # which answer sets each limit (shown on the profile page)
             "max_equity": [name for name, v in sources.items() if v[0] == max_equity],
             "min_bonds": [name for name, v in sources.items() if v[1] == min_bonds] if min_bonds > 0 else [],
+            "min_short_term": [name for name, v in sources.items() if v[2] == min_short_term] if min_short_term > 0 else [],
         }
         self.crypto_blocked = wants_crypto and cap_crypto == 0
 
@@ -126,6 +128,9 @@ class ClientProfile:
         if max_crypto == 0:
             tickers = [t for t in tickers if ASSETS[t][1] != "Crypto"]
         self.added_assets = []
+        if min_short_term > 0 and SHORT_TERM not in tickers:  # money needed soon -> short-term Treasuries
+            tickers.append(SHORT_TERM)
+            self.added_assets.append(SHORT_TERM)
         for filler in FILLERS:
             if not check_constraints(tickers, c):
                 break
@@ -148,6 +153,10 @@ class ClientProfile:
         if a["QD2"] in ("a", "b"):
             self.warnings.append("You may withdraw more than 25% within 12 months: "
                                  "keep that amount in cash outside the portfolio.")
+        if min_short_term > 0:
+            self.notes.append(f"You may need part of this money soon ({' and '.join(self.limit_sources['min_short_term'])}): "
+                              f"at least {min_short_term:.0%} is kept in short-term Treasuries (SHY), which almost "
+                              "never lose value, instead of long bonds or equities.")
         if self.safeguard:
             self.notes.append("Because of low savings or heavy commitments, your capacity is treated as "
                               "'Limited' at most.")

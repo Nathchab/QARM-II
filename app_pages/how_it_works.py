@@ -24,6 +24,11 @@ st.markdown("""
   capacity at Limited. Each tier gives a maximum in equities, a minimum in bonds, and maximums in gold/commodities
   and crypto. The horizon (QD1) and the possible withdrawals (QD2) give their own equity maximum and bond minimum.
   **The most restrictive source applies.** The client can tighten these limits, never relax them.
+- **Money needed soon goes into short-term Treasuries (SHY).** A mean-variance optimiser looks at one period
+  only: for the bond minimum it would happily choose 20-year Treasuries (TLT), which can lose a lot when rates
+  rise (about 30% in 2022). So money that may be needed within 3 years (QD1) or withdrawn within 12 months (QD2)
+  must be in SHY: at least 60%/40% for QD1 "within 1 year"/"1–3 years" and 50%/25%/10% for QD2
+  ">50%"/"25–50%"/"10–25%". SHY is almost cash, so it may exceed the 40% maximum per product.
 - **Why capacity does not change γ.** If capacity also raised γ, it would be counted twice (limits *and* a γ
   floor), and for most clients the risk tolerance would no longer change anything. Here a tolerant client with
   a low capacity gets the most dynamic portfolio *inside* the limits his situation allows.
@@ -31,7 +36,12 @@ st.markdown("""
   money needed within a year, or likely withdrawals above 25%. Inconsistent tolerance answers are only
   flagged when the final γ is at least two QE3 intervals away from the QE3 answer.
 - **Recommendation.** Every profile sees what the recommended method (Black-Litterman with the equilibrium)
-  gives for his γ and limits: equity and bond shares and the estimated volatility.
+  gives for his γ and limits: equity and bond shares and the estimated volatility. A client without views sees it
+  as "Market equilibrium (Black-Litterman)": it is the same thing.
+- **One forecast for all methods.** Every expected return shown in the app (portfolio page, frontier, plan) uses
+  the same forecast: the market equilibrium plus the client's views. With this forecast the recommended portfolio
+  is the optimal one for γ and the limits, so it is efficient: no other method has a higher expected return with
+  a lower risk (the portfolio page checks it). The average of the last 60 months is shown only as information.
 - **Products.** The asset classes chosen in QF1 give the recommended products; crypto (QF2) is also capped by
   capacity. If the chosen classes cannot satisfy the limits (for example no bond product but a bond minimum), we
   add the missing products and say so.
