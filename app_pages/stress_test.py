@@ -1,19 +1,19 @@
-"""Page 6: time machine. Replay past crises with the client's portfolio."""
+"""Page 6: stress test. Replay past crises with the client's portfolio."""
 import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from src.app_helpers import (get_benchmark, get_choices, get_currency, get_data, get_profile, get_valid_portfolios,
-                             get_views, method_label, next_button)
+from src.app_helpers import (client_method, get_benchmark, get_choices, get_currency, get_data, get_profile,
+                             get_valid_portfolios, highlight_lines, method_label, next_button)
 from src.portfolios import METHODS
-from src.time_machine import CRISES, crisis_summary, replay
+from src.stress_test import CRISES, crisis_summary, replay
 
 profile = get_profile()
 tickers, c = get_choices()
 currency = get_currency()
 benchmark_name, benchmark = get_benchmark(profile, tickers, c)
 
-st.title("6. Time machine")
+st.title("6. Stress test")
 st.write("What if you had bought your portfolio just before a crisis? "
          "We buy it on the day the market was at its peak and hold it.")
 
@@ -24,7 +24,7 @@ portfolios["Benchmark"] = benchmark
 col1, col2, col3 = st.columns(3)
 crisis = col1.selectbox("Crisis", list(CRISES))
 methods = [m for m in METHODS if m in portfolios]
-selected = st.session_state.get("method", methods[0])
+selected = client_method()
 method = col2.selectbox("Your portfolio", methods, index=methods.index(selected) if selected in methods else 0,
                         format_func=method_label)
 amount = col3.number_input(f"Amount invested ({currency})", min_value=1000, value=100_000, step=10_000)
@@ -34,18 +34,24 @@ st.info(f"**{crisis}** ({pd.Timestamp(start):%b %Y} → {pd.Timestamp(end):%b %Y
 
 # ---------- Value during the crisis and one year after ----------
 show_until = pd.Timestamp(end) + pd.DateOffset(years=1)
-paths = pd.DataFrame({name: amount * replay(prices, portfolios[name], start, show_until)
-                      for name in [method, "Benchmark"]})
-paths = paths.rename(columns={method: method_label(method), "Benchmark": f"Benchmark: {benchmark_name}"})
+yours, bench = f"★ Your portfolio: {method_label(method)}", f"Benchmark: {benchmark_name}"
+label = lambda name: yours if name == method else bench if name == "Benchmark" else method_label(name)
+names = [method, "Benchmark"] + [m for m in portfolios if m not in (method, "Benchmark")]  # yours first
+paths = pd.DataFrame({label(name): amount * replay(prices, portfolios[name], start, show_until) for name in names})
 fig = px.line(paths, title=f"Your {amount:,.0f} {currency} during the crisis (and one year after)")
-fig.add_vline(x=pd.Timestamp(end), line_dash="dash")
+highlight_lines(fig, yours, bench)
+fig.add_vline(x=pd.Timestamp(end), line_dash="dot")
 fig.update_layout(yaxis_title=currency, xaxis_title=None, legend_title=None)
 st.plotly_chart(fig)
+st.caption("Orange: your portfolio. Dashed: the benchmark. Grey: the other methods, only for comparison. "
+           "The dotted line is the end of the crisis.")
 
 # ---------- Worst loss and recovery ----------
 loss, months = crisis_summary(prices, portfolios[method], start, end)
+bench_loss, bench_months = crisis_summary(prices, benchmark, start, end)
+st.subheader(yours)
 col1, col2, col3 = st.columns(3)
-col1.metric("Worst loss", f"{loss:.1%}")
+col1.metric("Worst loss", f"{loss:.1%}", f"{loss - bench_loss:+.1%} vs benchmark ({bench_loss:.1%})")
 col2.metric(f"Worst loss in {currency}", f"{loss * amount:,.0f}")
 col3.metric("Time to get your money back", "not yet" if months is None else f"{months} months")
 
@@ -65,13 +71,14 @@ if missing:
 # ---------- All crises, all portfolios ----------
 st.subheader("All crises at a glance")
 rows = {}
-for name, w in portfolios.items():
+for name in names:
     row = {}
     for crisis_name, (s, e, _) in CRISES.items():
-        l, m = crisis_summary(prices, w, s, e)
+        l, m = crisis_summary(prices, portfolios[name], s, e)
         row[f"{crisis_name}: worst loss"] = f"{l:.1%}"
         row[f"{crisis_name}: months to recover"] = "not yet" if m is None else str(m)
-    rows[method_label(name) if name != "Benchmark" else f"Benchmark: {benchmark_name}"] = row
-st.dataframe(pd.DataFrame(rows).T)
+    rows[label(name)] = row
+st.dataframe(pd.DataFrame(rows).T.style.set_properties(subset=pd.IndexSlice[[yours], :],
+                                                       **{"background-color": "#fde4dc", "font-weight": "bold"}))
 
 next_button("app_pages/how_it_works.py", "Next: how does it work?")

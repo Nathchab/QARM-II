@@ -6,15 +6,16 @@ A Streamlit web app that works like a robo-advisor:
    *risk tolerance* (how much risk the client wants) and *risk capacity* (how much risk he can afford).
 2. **Your products & constraints**: recommended ETFs and crypto for the asset classes the client chose,
    with allocation limits that he can tighten but not relax.
-3. **Your portfolio**: Black-Litterman (recommended; market equilibrium, plus views for experienced investors),
-   Mean-Variance, Resampled Mean-Variance (Michaud) and Risk Parity (ERC). Weights, risk contributions, efficient frontier, beta,
+3. **Your portfolio**: Market equilibrium (recommended: mean-variance with the market-implied returns),
+   Mean-Variance and Resampled Mean-Variance (Michaud) with past returns, Risk Parity (ERC), and Black-Litterman
+   only for experienced investors who enter their own views. Weights, risk contributions, efficient frontier, beta,
    tracking error and a γ composition map.
 4. **Your plan**: projection of the client's wealth with a monthly savings plan (5,000 simulated futures), probability
    of reaching a savings goal and of a fall larger than the loss he accepts, the orders to place (number of shares
-   of each ETF), our 0.50% management fee, and a downloadable client report.
+   of each ETF), our 0.50% management fee, and a downloadable PDF report (fpdf2).
 5. **Backtest**: out-of-sample comparison of the four methods, with transaction costs, a turnover limit and
    optional cost-aware optimisation (LN3), after our management fee.
-6. **Time machine**: buy-and-hold replays of 2008, 2020 and 2022, compared with the loss the client said he
+6. **Stress test**: buy-and-hold replays of 2008, 2020 and 2022, compared with the loss the client said he
    could tolerate.
 
 Everything can be shown in USD or CHF. Prices are downloaded from Yahoo Finance and kept in memory for one day.
@@ -66,11 +67,13 @@ with an explanation rather than an alarm. Warnings are kept for material facts (
 significant commitments, money needed within a year, likely withdrawals above 25%). Every profile also gets
 one sentence with the equity/bond mix and volatility of its recommended portfolio.
 
-**Black-Litterman by default.** Without views, μ_BL = π, the market equilibrium returns: more stable than the
-60-month historical mean, so it is the recommended method for everybody. For a client without views the app calls
-it "Market equilibrium (Black-Litterman)". **One forecast for every method:** the expected returns shown for all
-methods (and in the efficient frontier and the plan) use the same forecast μ_BL, so the methods can be compared;
-with this forecast the recommended portfolio is optimal, so no other method dominates it (the page checks it). Only experienced investors (at least
+**Our recommendation: market equilibrium.** Mean-variance with the market equilibrium returns π = r_f + δΣw_mkt
+(reverse optimisation): more stable than the 60-month historical mean, which is shown only for comparison.
+**Black-Litterman is not the default:** it is offered only to experienced investors with views, and becomes their
+recommendation once they enter at least one valid view. **One forecast for every method:** the expected returns
+shown for all methods (and in the efficient frontier and the plan) use the same forecast (π, or μ_BL with views),
+so the methods can be compared; with this forecast the recommended portfolio is optimal, so no other method
+dominates it (the page checks it). Only experienced investors (at least
 2 years of investing, intermediate knowledge, and the correct answer to the diversification question QC3) who
 say they have convictions (QH4) can enter views: up to 5, absolute (“GLD will return 6%”) or relative (“EEM will
 beat SPY by 3%”), each with a confidence from QH6. The uncertainty is `Ω_kk = τ (PΣPᵀ)_kk (1 − c)/c`, and a view
@@ -123,7 +126,7 @@ src/optimizer.py        client limits, mean-variance, LN3 costs, resampling, fro
 src/black_litterman.py  equilibrium returns, absolute/relative views, posterior (LN4), view checks
 src/portfolios.py       the four methods and the benchmarks
 src/backtest.py         out-of-sample backtest and performance measures
-src/time_machine.py     crisis replay
+src/stress_test.py      crisis replay
 src/planning.py         projection, savings goal, order list, management fee, client report
 src/app_helpers.py      small functions shared by the pages
 tests/                  profile, Black-Litterman and optimizer tests, and a test that opens every page
@@ -133,7 +136,7 @@ tests/                  profile, Black-Litterman and optimizer tests, and a test
 
 19 ETFs covering equities, bonds, gold and commodities, plus Bitcoin and Ethereum. Yahoo Finance supplies
 adjusted prices, the USD/CHF rate (`CHF=X`) and the 13-week US T-bill yield (`^IRX`). The CHF risk-free rate
-uses yearly approximations of the SNB policy rate. The market weights used by Black-Litterman are our own
+uses yearly approximations of the SNB policy rate. The market weights used for the equilibrium returns are our own
 round numbers (stocks and bonds dominate, as in Doeswijk, Lam & Swinkels 2014), not measured market values.
 
 ## Limitations

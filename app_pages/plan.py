@@ -7,9 +7,9 @@ from src.app_helpers import (get_choices, get_currency, get_data, get_profile, g
                              method_label, next_button)
 from src.black_litterman import posterior_returns, restrict_views
 from src.optimizer import portfolio_stats
-from src.planning import (HORIZON_YEARS, MANAGEMENT_FEE, client_report, order_list, simulate_wealth,
-                          worst_drawdowns)
-from src.portfolios import METHODS, estimate
+from src.planning import HORIZON_YEARS, MANAGEMENT_FEE, order_list, simulate_wealth, worst_drawdowns
+from src.portfolios import METHODS, estimate, recommended_method
+from src.report import client_report
 
 profile = get_profile()
 tickers, c = get_choices()
@@ -22,7 +22,7 @@ st.write("What could your portfolio become, and what do you buy today?")
 
 # ---------- Inputs ----------
 methods = [m for m in METHODS if m in portfolios]
-saved = st.session_state.get("method", methods[0])
+saved = st.session_state.get("method", recommended_method(get_views()))
 col1, col2, col3 = st.columns(3)
 method = col1.selectbox("Portfolio", methods, index=methods.index(saved) if saved in methods else 0,
                         format_func=method_label)
@@ -33,8 +33,8 @@ years = col1.slider("Horizon (years)", 1, 40, HORIZON_YEARS[profile.answers["QD1
 goal = col2.number_input(f"Your goal ({currency})", min_value=1_000, value=200_000, step=10_000)
 
 # ---------- Projection ----------
-# Expected returns: Black-Litterman (market equilibrium + your views) for every method. It is the most prudent
-# estimate: we do not project the returns of the last 5 years into the future.
+# Expected returns: our forecast (market equilibrium, + your views if you entered some) for every method. It is the
+# most prudent estimate: we do not project the returns of the last 5 years into the future.
 mu, cov = estimate(returns[tickers])
 mu_bl = posterior_returns(cov, rf.iloc[-1] * 12, restrict_views(get_views(), mu.index))
 weights = portfolios[method]
@@ -75,7 +75,7 @@ col2.metric(f"Probability of a fall of more than {loss_limit:.0%} at some point"
 if plan["prob_goal"] < 0.5:
     st.info("Your goal is reached in less than half of the futures: save more each month, wait longer, "
             "or lower the goal.")
-st.caption(f"Expected return {exp_return:.1%} per year (Black-Litterman), minus our fee of {MANAGEMENT_FEE:.2%}, "
+st.caption(f"Expected return {exp_return:.1%} per year (our forecast: market equilibrium), minus our fee of {MANAGEMENT_FEE:.2%}, "
            f"volatility {vol:.1%}. Monthly returns are drawn from a normal distribution and are independent from "
            "one month to the next. Amounts are not adjusted for inflation.")
 
@@ -90,5 +90,5 @@ st.caption(f"Prices of {prices.index[-1]:%d %B %Y}. ETFs are bought in whole sha
 
 # ---------- Report ----------
 report = client_report(profile, c, method_label(method), weights, exp_return, vol, currency, plan, orders, cash)
-st.download_button("📄 Download my report", report, file_name="robo_advisor_report.txt")
+st.download_button("📄 Download my report (PDF)", report, file_name="robo_advisor_report.pdf", mime="application/pdf")
 next_button("app_pages/backtest.py", "Next: how would it have worked in the past?")

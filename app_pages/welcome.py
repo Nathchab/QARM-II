@@ -16,13 +16,13 @@ STEPS = [
                              "financial situation, what you want to invest in and your experience."),
     ("🧩", "2. Products & limits", "We pre-select the ETFs and the allocation limits that fit your profile. "
                                   "You can change the products and make the limits stricter."),
-    ("📊", "3. Your portfolio", "Our recommendation: the market equilibrium portfolio for your risk aversion "
-                               "(Black-Litterman), compared with three other methods."),
+    ("📊", "3. Your portfolio", "Our recommendation: the mean-variance portfolio for your risk aversion, with "
+                               "the returns the market expects. Compared with other methods, so you can see why."),
     ("🎯", "4. Your plan", "What your money could become with a monthly savings plan, the chance of reaching "
-                          "your goal, the orders to place and a report to download."),
+                          "your goal, the orders to place and a PDF report to download."),
     ("📈", "5. Backtest", "How the portfolio would have done in the past, rebalanced with the information "
                          "available at the time, after transaction costs and our fee."),
-    ("⏳", "6. Time machine", "What would have happened if you had invested just before the 2008, 2020 or 2022 "
+    ("⏳", "6. Stress test", "What would have happened if you had invested just before the 2008, 2020 or 2022 "
                              "crisis, and whether you could have stayed invested."),
 ]
 for row in (STEPS[:3], STEPS[3:]):

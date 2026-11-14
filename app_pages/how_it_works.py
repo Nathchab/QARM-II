@@ -46,11 +46,12 @@ st.markdown("""
 - **Warnings** are kept for material facts only: emergency savings below 3 months, significant commitments,
   money needed within a year, or likely withdrawals above 25%. Inconsistent tolerance answers are only
   flagged when the final γ is at least two QE3 intervals away from the QE3 answer.
-- **Recommendation.** Every profile sees what the recommended method (Black-Litterman with the equilibrium)
-  gives for his γ and limits: equity and bond shares and the estimated volatility. A client without views sees it
-  as "Market equilibrium (Black-Litterman)": it is the same thing.
+- **Recommendation.** For every client: mean-variance (Markowitz) with the **market equilibrium** returns
+  π = r_f + δΣw_mkt, the client's γ and his limits. Black-Litterman is **not** the default: it is only offered to
+  experienced investors who say they have their own views (QH4), and it becomes their recommendation only once
+  they enter at least one valid view.
 - **One forecast for all methods.** Every expected return shown in the app (portfolio page, frontier, plan) uses
-  the same forecast: the market equilibrium plus the client's views. With this forecast the recommended portfolio
+  the same forecast: the market equilibrium (plus the views of an experienced client, if any). With this forecast the recommended portfolio
   is the optimal one for γ and the limits, so it is efficient: no other method has a higher expected return with
   a lower risk (the portfolio page checks it). The average of the last 60 months is shown only as information.
 - **Products.** The asset classes chosen in QF1 give the recommended products; crypto (QF2) is also capped by
@@ -71,20 +72,25 @@ st.header("3. Methods")
 st.subheader("Mean-variance (Markowitz, lab LN1)")
 st.latex(r"\min_x \; \tfrac{1}{2} x^\top \Sigma x - \tfrac{1}{\gamma} x^\top \mu "
          r"\quad \text{s.t. } \textstyle\sum x_i = 1,\; 0 \le x_i \le x^+,\; \text{class constraints}")
-st.write("Same QP as in the lab, where the lab's γ is the risk tolerance = 1 / our risk aversion.")
+st.write("Same QP as in the lab, where the lab's γ is the risk tolerance = 1 / our risk aversion. We use it with "
+         "two different forecasts μ:")
+st.write("- **Market equilibrium (our recommendation):** μ = π = r_f + δΣw_mkt, the returns that make the market "
+         f"portfolio optimal (\"reverse optimisation\", δ = {DELTA}). They are far more stable than past averages, so "
+         "the portfolio does not jump from one month to the next.\n"
+         "- **Past returns:** μ = average of the last 60 months, the textbook version. Shown for comparison: it is "
+         "very sensitive to estimation errors (lab LN3).")
 
 st.subheader("Resampled mean-variance (Michaud 2007, lab LN3)")
 st.write("Expected returns are very uncertain, so mean-variance weights are unstable. We simulate 100 new "
          "samples of 60 months from N(μ, Σ), optimise each one and average the weights.")
 
-st.subheader("Black-Litterman (1992, lecture LN4): our recommended method")
+st.subheader("Black-Litterman (1992, lecture LN4): only for experienced investors with views")
 st.latex(r"\pi = r_f + \delta \Sigma w_{mkt}")
 st.latex(r"\mu_{BL} = \pi + \Gamma P^\top \left(P \Gamma P^\top + \Omega\right)^{-1} (Q - P\pi),"
          r"\qquad \Gamma = \tau\Sigma")
-st.write(f"π: equilibrium returns of the market portfolio (δ = {DELTA}, τ = {TAU}). **Without views, "
-         "μ_BL = π**: this is the default for every client, because equilibrium returns are far more stable than "
-         "60-month historical averages. With these returns, an investor without constraints who can also hold "
-         "cash would hold (δ/γ)·w_mkt in risky assets: the market portfolio scaled by his risk aversion.")
+st.write(f"π: equilibrium returns of the market portfolio (δ = {DELTA}, τ = {TAU}). Black-Litterman starts from "
+         "π and moves it towards the client's views. Without views μ_BL = π, so for the other clients we simply "
+         "use π (the market equilibrium method above) and do not show Black-Litterman at all.")
 st.write("**Views (experienced investors only).** A client is experienced if he has invested for at least 2 years, "
          "rates his knowledge at least intermediate (QB1, QC1) and answers the diversification question QC3 "
          "correctly. If he also says he has convictions (QH4), he can enter up to 5 views on the portfolio page. "
@@ -111,17 +117,17 @@ st.write("Beta with the covariance method β = cov(R_p, R_b) / var(R_b) and trac
 st.header("5. Your plan")
 st.write("**Projection.** We simulate 5,000 possible futures of the portfolio, month by month (Monte Carlo, as for "
          "the resampling of LN3). Each month the return is drawn from a normal distribution with the expected "
-         "return of Black-Litterman (equilibrium + views) minus our fee, and the volatility of the portfolio; "
+         "return of our forecast (market equilibrium, + views if any) minus our fee, and the volatility of the portfolio; "
          "then the monthly contribution is added:")
 st.latex(r"W_{t+1} = W_t\,(1 + r_{t+1}) + \text{contribution}, \qquad "
          r"r_{t+1} \sim N\!\left(\tfrac{\mu_p - \text{fee}}{12},\; \tfrac{\sigma_p^2}{12}\right)")
-st.write("We use the Black-Litterman returns for every method: projecting the returns of the last 5 years into the "
+st.write("We use the same forecast for every method: projecting the returns of the last 5 years into the "
          "future would be too optimistic or too pessimistic. The page shows the 5%, 50% and 95% percentiles of the "
          "final wealth, the share of futures that reach the goal, and the share of futures where the portfolio "
          "falls at some point by more than the loss accepted in QE2 (from a previous peak).")
 st.write("**Orders.** Amount × weight ÷ last price, rounded down to whole ETF shares (crypto: 0.0001 units); the rest "
          "stays in cash. **Fee.** Our management fee is 0.50% per year; it is also taken in the backtest. "
-         "**Report.** A text file with the profile, limits, portfolio, plan, orders and warnings.")
+         "**Report.** A PDF with the profile, limits, portfolio, plan, orders and points to review.")
 
 st.header("6. Backtest with transaction costs (LN3)")
 st.write("Out-of-sample: at each rebalancing we only use the past 60 months. Between rebalancings the weights "
@@ -136,16 +142,16 @@ st.latex(r"\text{s.t. } \textstyle\sum x_i + c^\top(\Delta x^- + \Delta x^+) = 1
 st.write("So the portfolio only trades when the gain is larger than the cost. Resampled MV and risk parity "
          "move towards their new target, but never trade more than the turnover limit τ⁺.")
 
-st.header("7. Time machine")
+st.header("7. Stress test")
 st.write("Buy and hold from the market peak of 2008, 2020 and 2022, compared with the largest temporary loss "
          "the client said (QE2) he could tolerate without abandoning the strategy.")
 
 st.header("8. Limitations")
 st.markdown("""
-- Past returns are a noisy guess of future returns (this is why we offer Black-Litterman and resampling).
+- Past returns are a noisy guess of future returns (this is why we recommend the market equilibrium returns, and offer resampling).
 - 60 months is a short window; a longer one is more stable but reacts slower.
 - In CHF, we do not hedge the currency risk; the CHF risk-free rate is an approximation (SNB policy rate).
-- The market weights of Black-Litterman are our own round numbers, not measured market capitalisations.
+- The market weights of the equilibrium returns are our own round numbers, not measured market capitalisations.
 - The current month is not finished: it is used as if it was a full month.
 - We do not shrink the covariance matrix (Ledoit-Wolf): with about 10 products and 60 months, the estimation
   error of Σ is small compared to the error on μ. With many more products, shrinkage would become useful.

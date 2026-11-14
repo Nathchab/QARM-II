@@ -1,4 +1,4 @@
-"""Projection, savings goal, order list and client report."""
+"""Projection, savings goal, order list and PDF report."""
 import unittest
 
 import numpy as np
@@ -39,6 +39,21 @@ class OrderListTests(unittest.TestCase):
         self.assertEqual(list(orders["Quantity"].round(4)), [8, 30, .0222])  # GLD (weight 0) is not bought
         self.assertAlmostEqual(cash, 10_000 - 8 * 600 - 30 * 100 - .0222 * 90_000, places=6)
         self.assertGreaterEqual(cash, 0)
+
+
+class ReportTests(unittest.TestCase):
+    def test_the_report_is_a_pdf(self):
+        from src.client_profile import ClientProfile
+        from src.report import client_report
+        profile = ClientProfile(dict(QE1="c", QE2="c", QE3="b", QE4="c", QD1="b", QD2="c", age="b", income="b",
+                                     savings="a", commitments="b", QF1=["a", "b"], QF2="b", QB1="a", QC1="a", QC3="d"))
+        weights = pd.Series({"SPY": .5, "AGG": .3, "SHY": .2})
+        orders, cash = order_list(weights, pd.Series({"SPY": 600., "AGG": 100., "SHY": 80.}), 10_000)
+        plan = dict(initial=10_000, monthly=100, years=10, paid_in=22_000, goal=30_000, p5=18_000, p50=28_000,
+                    p95=40_000, prob_goal=.45, loss_limit=.2, prob_loss=.1)
+        pdf = client_report(profile, profile.recommended_constraints, "Market equilibrium (mean-variance)", weights,
+                            .05, .09, "CHF", plan, orders, cash)
+        self.assertTrue(pdf.startswith(b"%PDF"))
 
 
 if __name__ == "__main__":

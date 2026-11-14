@@ -53,7 +53,7 @@ st.header("5. Your experience")
 for code, (text, opts) in EXPERIENCE.items():
     answers[code] = ask(code, text, opts)
 if is_experienced(answers):
-    st.success("You qualify as an experienced investor: you can add your own market views to Black-Litterman.")
+    st.success("You qualify as an experienced investor: you can add your own market views (Black-Litterman model, page 3).")
     text, opts = VIEWS_QUESTION
     answers["QH4"] = ask("QH4", text, opts)
 
@@ -89,7 +89,7 @@ if "profile" in st.session_state:
         st.success(summary)
     show_profile_messages(profile, notes=True)
     st.caption("Experienced investor: " + ("yes" if profile.experienced else "no")
-               + (" · Your own market views: yes (portfolio page)" if profile.wants_views
+               + (" · Your own market views: yes (Black-Litterman, on the portfolio page)" if profile.wants_views
                   else " · Recommended portfolio: market equilibrium, no personal views"))
 
     st.subheader("Your allocation limits")

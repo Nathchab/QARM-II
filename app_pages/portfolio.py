@@ -1,4 +1,4 @@
-"""Page 3: the optimal portfolio of the client, with 4 methods."""
+"""Page 3: the optimal portfolio of the client, compared with other methods."""
 import numpy as np
 import pandas as pd
 import plotly.express as px
@@ -12,7 +12,7 @@ from src.black_litterman import (CONFIDENCE_LEVELS, EXTREME_VIEW, MAX_VIEWS, mar
                                   prior_returns, restrict_views, view_check, view_problems)
 from src.data import ASSETS, SHORT_TERM
 from src.optimizer import beta, class_exposures, frontier, portfolio_stats, risk_contributions, tracking_error
-from src.portfolios import METHODS, RECOMMENDED_METHOD, WINDOW, bad_year_loss, dominated_by, estimate
+from src.portfolios import METHODS, WINDOW, bad_year_loss, dominated_by, estimate, recommended_method
 
 CLASS_COLORS = {"Equity": "#1f77b4", "Bond": "#2ca02c", "Other": "#ff7f0e", "Crypto": "#9467bd"}
 
@@ -33,89 +33,89 @@ show_profile_messages(profile)
 past = returns[tickers].dropna().iloc[-WINDOW:]
 benchmark_returns = returns.loc[past.index, benchmark.index].fillna(0) @ benchmark
 
-method = st.radio("Choose a method", METHODS, horizontal=True,
-                  format_func=lambda m: method_label(m) + (" – recommended" if m == RECOMMENDED_METHOD else ""),
-                  index=METHODS.index(st.session_state.get("method", RECOMMENDED_METHOD)))
-st.session_state["method"] = method
+# ---------- Only for experienced investors who want it (QH4): their views, with Black-Litterman (LN4) ----------
+prior = prior_returns(cov, rf_now)
+if profile.wants_views:
+    st.subheader("Your views on the markets (Black-Litterman)")
+    st.write("You told us that you have your own views (QH4). Black-Litterman (lecture LN4) moves the market "
+             "equilibrium returns towards your views, as much as your confidence allows. Add a view only where you "
+             "have a real conviction. **Absolute**: “GLD will return 6% per year”. **Relative**: “EEM will beat SPY "
+             "by 3% per year”. With at least one valid view, Black-Litterman becomes our recommendation.")
+    saved_views = list(restrict_views(st.session_state.get("views", ()), mu.index))
+    products = list(mu.index)
+    levels = list(CONFIDENCE_LEVELS)
+    n = st.number_input("Number of views", 0, MAX_VIEWS, len(saved_views), key="n_views")
+    views = []
+    for k in range(int(n)):
+        asset, other, q, conf = saved_views[k] if k < len(saved_views) else (
+            products[0], None, round(float(prior.iloc[0]) * 100, 1) / 100, CONFIDENCE_LEVELS["Medium"])
+        st.markdown(f"**View {k + 1}**")
+        col1, col2, col3, col4, col5 = st.columns([2, 2, 2, 2, 3])
+        kind = col1.selectbox("Type", ["Absolute", "Relative"], index=0 if other is None else 1, key=f"v{k}_type")
+        asset = col2.selectbox("Product", products, index=products.index(asset), key=f"v{k}_asset")
+        if kind == "Relative":
+            others = [t for t in products if t != asset]
+            other = other if other in others else others[0]
+            other = col3.selectbox("will beat", others, index=others.index(other), key=f"v{k}_other")
+            label = "by (% per year)"
+        else:
+            other = None
+            col3.write("")
+            label = "will return (% per year)"
+        q = col4.number_input(label, -30.0, 50.0, float(round(q * 100, 1)), 0.5, key=f"v{k}_q") / 100
+        level = col5.select_slider("Confidence (QH6)", levels,
+                                   value=min(levels, key=lambda name: abs(CONFIDENCE_LEVELS[name] - conf)),
+                                   key=f"v{k}_conf")
+        view = (asset, other, q, CONFIDENCE_LEVELS[level])
+        check = view_check(cov, prior, view)
+        what = f"π_{asset}" if other is None else f"π_{asset} − π_{other}"
+        st.caption(f"Equilibrium: {what} = {check['equilibrium']:.1%} · your view is "
+                   f"{q - check['equilibrium']:+.1%} away ({check['gap']:+.1f} standard deviations of the view, "
+                   f"volatility {check['volatility']:.1%}).")
+        if check["extreme"]:
+            st.warning(f"View {k + 1} is more than {EXTREME_VIEW:g} standard deviations away from the market "
+                       "equilibrium: are you sure? With a high confidence it will dominate the portfolio.")
+        views.append(view)
+    problems = view_problems(views)
+    for problem in problems:
+        st.error(problem)
+    if problems:
+        st.info("Your views are not used until these problems are fixed.")
+    st.session_state["views"] = tuple(views) if not problems else ()
+    st.caption("Each view is a row of P (+1 on the product, −1 on the second product of a relative view) and "
+               "a value of Q. Its uncertainty is Ω = τ·(PΣPᵀ)·(1 − c)/c, with c = 20%, 50%, 80% or 95%: "
+               "Medium gives the view the same uncertainty as the equilibrium.")
 
-# ---------- Black-Litterman: equilibrium for everybody, own views (QH5-QH6) for experienced investors ----------
-if method == "Black-Litterman":
-    prior = prior_returns(cov, rf_now)
-    st.subheader("Market equilibrium")
-    st.write("Our forecast of the returns is the **market equilibrium** π = r_f + δΣw_mkt: the returns that make "
-             "the market portfolio optimal, i.e. what the market as a whole expects for the risk of each product. "
-             "Without personal views, Black-Litterman simply uses these returns. They are much more stable than "
-             "the average of the last 5 years, which is why this is our recommended method.")
-    st.dataframe(pd.DataFrame({
-        "Product": [ASSETS[t][0] for t in mu.index],
-        "Market weight": market_weights(mu.index),
-        "Equilibrium return": prior,
-        f"Historical return ({WINDOW} months)": mu,
-    }).style.format({"Market weight": "{:.0%}", "Equilibrium return": "{:.1%}",
-                     f"Historical return ({WINDOW} months)": "{:.1%}"}))
-
-    if not profile.wants_views:
-        st.caption("Your profile uses the equilibrium returns without personal views. Experienced investors who "
-                   "want to add views can say so in the questionnaire (part 5).")
-    else:
-        st.subheader("Your views on the markets")
-        st.write("Add a view only where you have a real conviction. **Absolute**: “GLD will return 6% per year”. "
-                 "**Relative**: “EEM will beat SPY by 3% per year”. The confidence sets how far the portfolio "
-                 "moves from the equilibrium towards your view.")
-        saved_views = list(restrict_views(st.session_state.get("views", ()), mu.index))
-        products = list(mu.index)
-        levels = list(CONFIDENCE_LEVELS)
-        n = st.number_input("Number of views", 0, MAX_VIEWS, len(saved_views), key="n_views")
-        views = []
-        for k in range(int(n)):
-            asset, other, q, conf = saved_views[k] if k < len(saved_views) else (
-                products[0], None, round(float(prior.iloc[0]) * 100, 1) / 100, CONFIDENCE_LEVELS["Medium"])
-            st.markdown(f"**View {k + 1}**")
-            col1, col2, col3, col4, col5 = st.columns([2, 2, 2, 2, 3])
-            kind = col1.selectbox("Type", ["Absolute", "Relative"], index=0 if other is None else 1, key=f"v{k}_type")
-            asset = col2.selectbox("Product", products, index=products.index(asset), key=f"v{k}_asset")
-            if kind == "Relative":
-                others = [t for t in products if t != asset]
-                other = other if other in others else others[0]
-                other = col3.selectbox("will beat", others, index=others.index(other), key=f"v{k}_other")
-                label = "by (% per year)"
-            else:
-                other = None
-                col3.write("")
-                label = "will return (% per year)"
-            q = col4.number_input(label, -30.0, 50.0, float(round(q * 100, 1)), 0.5, key=f"v{k}_q") / 100
-            level = col5.select_slider("Confidence (QH6)", levels,
-                                       value=min(levels, key=lambda name: abs(CONFIDENCE_LEVELS[name] - conf)),
-                                       key=f"v{k}_conf")
-            view = (asset, other, q, CONFIDENCE_LEVELS[level])
-            check = view_check(cov, prior, view)
-            what = f"π_{asset}" if other is None else f"π_{asset} − π_{other}"
-            st.caption(f"Equilibrium: {what} = {check['equilibrium']:.1%} · your view is "
-                       f"{q - check['equilibrium']:+.1%} away ({check['gap']:+.1f} standard deviations of the view, "
-                       f"volatility {check['volatility']:.1%}).")
-            if check["extreme"]:
-                st.warning(f"View {k + 1} is more than {EXTREME_VIEW:g} standard deviations away from the market "
-                           "equilibrium: are you sure? With a high confidence it will dominate the portfolio.")
-            views.append(view)
-        problems = view_problems(views)
-        for problem in problems:
-            st.error(problem)
-        if problems:
-            st.info("Your views are not used until these problems are fixed.")
-        st.session_state["views"] = tuple(views) if not problems else ()
-        st.caption("Each view is a row of P (+1 on the product, −1 on the second product of a relative view) and "
-                   "a value of Q. Its uncertainty is Ω = τ·(PΣPᵀ)·(1 − c)/c, with c = 20%, 50%, 80% or 95%: "
-                   "Medium gives the view the same uncertainty as the equilibrium.")
-
+views = restrict_views(get_views(), mu.index)
+recommended = recommended_method(views)
 portfolios, gamma = get_valid_portfolios(profile, tickers, c)
-if method not in portfolios:
-    method = next(iter(portfolios))
-    st.info(f"Showing {method} instead.")
+methods = [m for m in METHODS if m in portfolios]
+saved = st.session_state.get("method", recommended)
+default = saved if saved in methods else recommended if recommended in methods else methods[0]
+method = st.radio("Choose a method", methods, horizontal=True, index=methods.index(default),
+                  format_func=lambda m: method_label(m) + (" – recommended" if m == recommended else ""))
+st.session_state["method"] = method
 weights = portfolios[method]
+
+# ---------- Our recommendation: mean-variance with the market equilibrium returns ----------
+if method in ("Equilibrium", "Black-Litterman"):
+    st.write("**Where do the expected returns come from?** Not from the last 5 years: their average is a very noisy "
+             "guess of the future (lab LN3). We use the **market equilibrium** π = r_f + δΣw_mkt, the returns that "
+             "make the market portfolio optimal, i.e. what the market as a whole expects for the risk of each "
+             "product. Then the mean-variance optimiser (Markowitz) chooses the best mix for your γ and your limits."
+             + (" Black-Litterman moves π towards your views." if method == "Black-Litterman" else ""))
+    with st.expander("See the equilibrium returns"):
+        st.dataframe(pd.DataFrame({
+            "Product": [ASSETS[t][0] for t in mu.index],
+            "Market weight": market_weights(mu.index),
+            "Equilibrium return": prior,
+            f"Historical return ({WINDOW} months)": mu,
+        }).style.format({"Market weight": "{:.0%}", "Equilibrium return": "{:.1%}",
+                         f"Historical return ({WINDOW} months)": "{:.1%}"}))
 
 # ONE forecast of the expected returns for every method, so that the portfolios can be compared:
 # the market equilibrium (plus the client's views). The average of the last 60 months is NOT a forecast.
-forecast = posterior_returns(cov, rf_now, restrict_views(get_views(), mu.index))
+forecast = posterior_returns(cov, rf_now, views)
 
 # ---------- Key numbers ----------
 ret, vol = portfolio_stats(weights, forecast, cov)
@@ -128,13 +128,13 @@ col3.metric("Sharpe ratio", f"{(ret - rf_now) / vol:.2f}" if vol > 0 else "–")
 col4.metric("Beta vs benchmark", f"{beta(past @ weights, benchmark_returns):.2f}",
             help=f"Benchmark: {benchmark_name} (you can change it on the backtest page)")
 loss = bad_year_loss(weights, forecast, cov)
-rec_loss = bad_year_loss(portfolios.get(RECOMMENDED_METHOD, weights), forecast, cov)
+rec_loss = bad_year_loss(portfolios.get(recommended, weights), forecast, cov)
 note = loss_limit_note(profile, gamma, rec_loss, currency)
 if profile.max_loss is not None:
     if loss >= profile.max_loss - 1e-4:
         st.caption(f"In a bad year (5% chance) this portfolio could lose about {-loss:.1%}: within the "
                    f"{-profile.max_loss:.0%} you can tolerate (QE2).")
-    elif method != RECOMMENDED_METHOD and loss < rec_loss - 1e-4:
+    elif method != recommended and loss < rec_loss - 1e-4:
         st.warning(f"In a bad year (5% chance) this portfolio could lose about {-loss:.0%}, more than the "
                    f"{-profile.max_loss:.0%} you can tolerate (QE2). Choose the recommended method instead.")
 if note:
@@ -172,12 +172,12 @@ col2.plotly_chart(px.bar(table, x=table.index, y="Risk contribution", color="Cla
                          text_auto=".0%").update_layout(yaxis_tickformat=".0%", xaxis_title=None))
 
 # ---------- Is the recommended portfolio efficient? ----------
-better = dominated_by(portfolios, forecast, cov, RECOMMENDED_METHOD) if RECOMMENDED_METHOD in portfolios else []
+better = dominated_by(portfolios, forecast, cov, recommended) if recommended in portfolios else []
 if better:
     st.warning(f"With our forecast, {', '.join(method_label(m) for m in better)} gives a higher expected return "
-               f"with less risk than {method_label(RECOMMENDED_METHOD)}: choose it instead.")
+               f"with less risk than {method_label(recommended)}: choose it instead.")
 else:
-    st.success(f"{method_label(RECOMMENDED_METHOD)} is efficient: with our forecast, no other method gives a higher "
+    st.success(f"{method_label(recommended)} is efficient: with our forecast, no other method gives a higher "
                "expected return with less risk (it is the optimal portfolio for your γ and your limits).")
 
 # ---------- Efficient frontier: all methods with the same forecast ----------
@@ -202,7 +202,7 @@ st.caption("Mean-variance and resampled mean-variance trust the average returns 
            "forecast they are below the frontier. Risk parity uses no expected returns at all: it gives up some "
            "expected return to spread the risk.")
 
-# ---------- Compare the 4 methods ----------
+# ---------- Compare the methods ----------
 st.subheader("Compare the methods")
 compare = pd.DataFrame(portfolios)
 compare.index = [f"{t} ({ASSETS[t][0]})" for t in compare.index]

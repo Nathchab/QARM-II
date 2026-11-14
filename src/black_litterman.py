@@ -6,8 +6,8 @@ Black-Litterman (lecture LN4; Black & Litterman 1992, He & Litterman 1999).
    (relative), each with a confidence.
 3. Posterior: a mix of the prior and the views, weighted by their uncertainty.
 
-Without views the posterior is the prior: this is our default for every client, because the
-equilibrium returns are much more stable than 60-month historical averages.
+Black-Litterman is only used for experienced investors who enter views. Every other client gets the prior
+alone (the "market equilibrium" method), because it is much more stable than 60-month historical averages.
 
 A view is a tuple (asset, other, q, confidence):
     absolute: ("GLD", None, 0.06, 0.5)   -> P row: +1 on GLD,             Q = 6%

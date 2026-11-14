@@ -18,7 +18,7 @@ pages = st.navigation([
     st.Page("app_pages/portfolio.py", title="3. Your portfolio", icon="📊"),
     st.Page("app_pages/plan.py", title="4. Your plan", icon="🎯"),
     st.Page("app_pages/backtest.py", title="5. Backtest", icon="📈"),
-    st.Page("app_pages/time_machine.py", title="6. Time machine", icon="⏳"),
+    st.Page("app_pages/stress_test.py", title="6. Stress test", icon="⏳"),
     st.Page("app_pages/how_it_works.py", title="How it works", icon="📚"),
 ])
 

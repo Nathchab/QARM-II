@@ -8,8 +8,8 @@ Only the questions that change the portfolio are asked:
   - F. Asset universe (QF1-QF2)        -> recommended products and crypto limit
   - B/C. Experience and knowledge (QB1, QC1, QC3) -> experienced investor or not
   - H. Market views (QH4, only for experienced investors) -> Black-Litterman views allowed or not
-Black-Litterman views and their confidence (QH5-QH6) are entered on the portfolio page, next to the
-equilibrium returns. Without views, Black-Litterman uses the market equilibrium.
+Black-Litterman views and their confidence (QH5-QH6) are entered on the portfolio page. Without views, the client
+gets our default recommendation: mean-variance with the market equilibrium returns.
 
 Each answer is stored as a letter "a", "b", ... (or a list of letters for QF1).
 """
@@ -43,7 +43,7 @@ RISK_TOLERANCE = {
 # QE3 options as (expected return, volatility): used to check the gamma calibration
 QE3_PROFILES = {"a": (0.05, 0.05), "b": (0.08, 0.10), "c": (0.12, 0.20), "d": (0.16, 0.30)}
 
-# QE2 as a number, for the time machine (None = the client accepts more than 30%)
+# QE2 as a number, for the stress test (None = the client accepts more than 30%)
 QE2_MAX_LOSS = {"a": -0.05, "b": -0.10, "c": -0.20, "d": -0.30, "e": None}
 
 # ---------- D. Horizon and liquidity: (text, (max equity, min bonds, min in short-term Treasuries)) ----------

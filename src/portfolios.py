@@ -1,17 +1,24 @@
 """
-The four portfolios we offer to the client, and the benchmarks.
+The portfolios we offer to the client, and the benchmarks.
 Used by the app pages and by the backtest.
+
+Our recommendation for every client is "Market equilibrium": mean-variance (Markowitz) with the expected returns
+implied by the market (pi = rf + delta * Cov * w_market, "reverse optimisation"), because the average of the last
+5 years is a very noisy forecast (LN3). Black-Litterman is only for experienced investors who enter their own
+views (QH4): then it moves the equilibrium returns towards the views (LN4) and becomes the recommendation.
 """
 import numpy as np
 import pandas as pd
 
-from src.black_litterman import market_weights, posterior_returns, restrict_views
+from src.black_litterman import market_weights, posterior_returns, prior_returns, restrict_views
 from src.data import ASSETS
 from src.optimizer import gamma_for_max_volatility, mean_variance, portfolio_stats, resampled, risk_parity
 
 WINDOW = 60  # we estimate returns and risk on the last 60 months (5 years)
-METHODS = ["Black-Litterman", "Mean-variance", "Resampled MV", "Risk parity (ERC)"]
-RECOMMENDED_METHOD = "Black-Litterman"  # without views = market equilibrium returns, the most stable inputs
+METHODS = ["Equilibrium", "Black-Litterman", "Mean-variance", "Resampled MV", "Risk parity (ERC)"]
+LABELS = {"Equilibrium": "Market equilibrium (mean-variance)", "Black-Litterman": "Black-Litterman (your views)",
+          "Mean-variance": "Mean-variance (past returns)", "Resampled MV": "Resampled MV (past returns)",
+          "Risk parity (ERC)": "Risk parity (ERC)"}
 # "Loss in a bad year" = expected return - 1.645 x volatility: with a normal distribution, a year is worse than
 # that with a probability of 5%. The client's answer to QE2 is the largest loss he can tolerate.
 BAD_YEAR = 1.645
@@ -29,16 +36,19 @@ def estimate(monthly_returns):
 
 
 def build_portfolios(mu, cov, rf, gamma, c, views, n_sim=100):
-    """The four methods, all with the same client constraints.
+    """The methods, all with the same client constraints (Black-Litterman only if the client has views).
     Returns (weights of the methods that worked, error message of the methods that failed):
     one failing method does not hide the others."""
     views = restrict_views(views, mu.index)  # ignore views on products not chosen
     methods = {
+        "Equilibrium": lambda: mean_variance(prior_returns(cov, rf), cov, gamma, c),
+        "Black-Litterman": lambda: mean_variance(posterior_returns(cov, rf, views), cov, gamma, c),
         "Mean-variance": lambda: mean_variance(mu, cov, gamma, c),
         "Resampled MV": lambda: resampled(mu, cov, gamma, c, n_sim),
-        "Black-Litterman": lambda: mean_variance(posterior_returns(cov, rf, views), cov, gamma, c),
         "Risk parity (ERC)": lambda: risk_parity(cov, c),
     }
+    if not views:  # Black-Litterman only for experienced clients who entered views
+        del methods["Black-Litterman"]
     portfolios, errors = {}, {}
     for name, compute in methods.items():
         try:
@@ -63,11 +73,9 @@ def gamma_for_loss_limit(forecast, cov, gamma, c, max_loss):
     return gamma_for_max_volatility(forecast, cov, gamma, c, -max_loss / BAD_YEAR)
 
 
-def method_name(method, views):
-    """Name shown to the client: Black-Litterman without views is simply the market equilibrium."""
-    if method == "Black-Litterman":
-        return "Black-Litterman with your views" if views else "Market equilibrium (Black-Litterman)"
-    return method
+def recommended_method(views):
+    """Market equilibrium for every client; Black-Litterman only when an experienced client entered views."""
+    return "Black-Litterman" if views else "Equilibrium"
 
 
 def dominated_by(portfolios, forecast, cov, method):
@@ -79,18 +87,6 @@ def dominated_by(portfolios, forecast, cov, method):
         if r >= ret - 1e-9 and v <= vol + 1e-9 and (r > ret + 1e-6 or v < vol - 1e-6):
             better.append(other)
     return better
-
-
-def recommended_method(portfolios, forecast, cov):
-    """Black-Litterman, unless another method dominates it: then the dominating method with the closest risk.
-    (With our forecast, Black-Litterman is the optimal portfolio, so in practice it is never dominated.)"""
-    if RECOMMENDED_METHOD not in portfolios:
-        return next(iter(portfolios))
-    better = dominated_by(portfolios, forecast, cov, RECOMMENDED_METHOD)
-    if not better:
-        return RECOMMENDED_METHOD
-    vol = portfolio_stats(portfolios[RECOMMENDED_METHOD], forecast, cov)[1]
-    return min(better, key=lambda m: abs(portfolio_stats(portfolios[m], forecast, cov)[1] - vol))
 
 
 def benchmark_weights(name, tickers, equity_share):

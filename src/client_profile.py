@@ -91,7 +91,7 @@ class ClientProfile:
         self.rt = risk_tolerance_score(a)
         self.gamma = gamma_from_rt(self.rt)
         self.label = rt_label(self.rt)
-        self.max_loss = QE2_MAX_LOSS[a["QE2"]]  # used by the time machine
+        self.max_loss = QE2_MAX_LOSS[a["QE2"]]  # used by the stress test and the loss limit
 
         # Experience -> can the client enter Black-Litterman views?
         self.experienced = is_experienced(a)

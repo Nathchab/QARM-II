@@ -5,19 +5,19 @@ At each rebalancing date we estimate returns and risk on the PAST 60 months only
 new weights. Between two rebalancings we hold the portfolio, so the weights drift with the
 markets. We never use future information.
 
-Our management fee (MANAGEMENT_FEE per year) is taken every month from our four portfolios, not from
+Our management fee (MANAGEMENT_FEE per year) is taken every month from our portfolios, not from
 the benchmark: the client would not pay it if he bought the benchmark himself.
 
 Transaction costs, as in lecture LN3:
   - every trade costs `cost` (e.g. 0.10% of the amount traded), paid from the portfolio;
-  - Mean-variance and Black-Litterman can be "cost-aware": they solve the LN3 problem with
+  - the mean-variance methods (equilibrium, past returns, Black-Litterman) can be "cost-aware": they solve the LN3 problem with
     transaction costs, so they only trade when it is worth it;
   - the turnover of each rebalancing can be limited (LN3 turnover management).
 """
 import numpy as np
 import pandas as pd
 
-from src.black_litterman import posterior_returns, restrict_views
+from src.black_litterman import posterior_returns, prior_returns, restrict_views
 from src.optimizer import mean_variance_with_costs
 from src.planning import MANAGEMENT_FEE
 from src.portfolios import WINDOW, build_portfolios, gamma_for_loss_limit
@@ -66,15 +66,16 @@ def run_backtest(returns, rf, tickers, benchmark, gamma, c, views, start, end,
             else:
                 limit = max_turnover
                 cost_in_optimisation = cost if cost_aware else 0.0
-                new = {
-                    "Mean-variance": mean_variance_with_costs(mu, cov, g, c, weights["Mean-variance"].values,
-                                                              cost_in_optimisation, limit),
-                    "Resampled MV": move_towards(weights["Resampled MV"], targets["Resampled MV"], limit),
-                    "Black-Litterman": mean_variance_with_costs(bl_mu, cov, g, c, weights["Black-Litterman"].values,
-                                                                cost_in_optimisation, limit),
-                    "Risk parity (ERC)": move_towards(weights["Risk parity (ERC)"], targets["Risk parity (ERC)"], limit),
-                    "Benchmark": benchmark,  # the benchmark always goes back to its weights
-                }
+                forecasts = {"Equilibrium": prior_returns(cov, rf_now), "Mean-variance": mu, "Black-Litterman": bl_mu}
+                new = {}
+                for name in targets:
+                    if name == "Benchmark":  # the benchmark always goes back to its weights
+                        new[name] = benchmark
+                    elif name in forecasts:  # mean-variance methods: LN3 problem with costs and turnover limit
+                        new[name] = mean_variance_with_costs(forecasts[name], cov, g, c, weights[name].values,
+                                                             cost_in_optimisation, limit)
+                    else:  # resampled MV and risk parity: move towards the new target
+                        new[name] = move_towards(weights[name], targets[name], limit)
             for name, w in new.items():
                 traded[name] = (w - weights[name]).abs().sum() if weights else 1.0
                 weights_history.setdefault(name, {})[date] = w

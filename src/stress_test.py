@@ -1,5 +1,5 @@
 """
-Time machine: what would have happened to the client's portfolio during past crises?
+Stress test: what would have happened to the client's portfolio during past crises?
 We buy the portfolio on the first day of the crisis and hold it (no rebalancing).
 """
 
