@@ -7,9 +7,13 @@ import streamlit as st
 from src.data import download_prices
 
 st.set_page_config(page_title="Robo-advisor", page_icon="📈", layout="wide")
+# Bigger "Next" buttons (the primary buttons of every page)
+st.markdown("<style>button[kind='primary'] {min-height: 3.5rem;} button[kind='primary'] p {font-size: 1.25rem; "
+            "font-weight: 600;}</style>", unsafe_allow_html=True)
 
 pages = st.navigation([
-    st.Page("app_pages/profile.py", title="1. Your profile", icon="🧑", default=True),
+    st.Page("app_pages/welcome.py", title="Welcome", icon="👋", default=True),
+    st.Page("app_pages/profile.py", title="1. Your profile", icon="🧑"),
     st.Page("app_pages/choices.py", title="2. Your products & constraints", icon="🧩"),
     st.Page("app_pages/portfolio.py", title="3. Your portfolio", icon="📊"),
     st.Page("app_pages/plan.py", title="4. Your plan", icon="🎯"),
@@ -38,6 +42,6 @@ if st.sidebar.button("🧹 Start over (new client)", help="Forget all the answer
     client_number = st.session_state.get("client_number", 0) + 1
     st.session_state.clear()  # forget the profile, the products, the views, the backtest settings...
     st.session_state["client_number"] = client_number  # new keys for the questions, so they come back empty
-    st.switch_page("app_pages/profile.py")
+    st.switch_page("app_pages/welcome.py")
 
 pages.run()

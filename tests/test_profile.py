@@ -119,6 +119,11 @@ class CapacityTests(unittest.TestCase):
         self.assertIn("SHY", p.added_assets)
         self.assertEqual(check_constraints(p.recommended_assets, p.recommended_constraints), [])
 
+    def test_prudent_clients_always_have_the_safe_product(self):
+        p = profile(QF1=["a", "b"], QE2="b")  # SHY not chosen, but at most 10% of loss accepted
+        self.assertIn("SHY", p.recommended_assets)
+        self.assertNotIn("SHY", profile(QF1=["a", "b"]).recommended_assets)  # 20% accepted: not added
+
     def test_missing_answer_is_rejected(self):
         answers = dict(BASE)
         del answers["QE3"]

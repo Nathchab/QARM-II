@@ -36,7 +36,12 @@ ASSETS = {
     "ETH-USD": ("Ethereum", "Crypto"),
 }
 
-SHORT_TERM = "SHY"  # where money that may be needed soon is kept: short-term Treasuries (almost no risk)
+SHORT_TERM = "SHY"  # the "cash" of the robo-advisor: short-term Treasuries, almost no risk, no maximum weight
+# Narrow "satellite" products (one sector, one country, one risk): at most 15% each, so that the portfolio stays
+# built around broad "core" products (core-satellite approach). Without this, the most tolerant clients got
+# 35% in real estate (VNQ) and 21% in emerging markets.
+SATELLITES = ["QQQ", "IWM", "EWL", "EWJ", "EEM", "VNQ", "HYG", "EMB", "SLV"]
+SATELLITE_MAX = 0.15
 
 FX = "CHF=X"   # number of CHF for 1 USD
 RF = "^IRX"    # 13-week US Treasury bill yield, in % per year

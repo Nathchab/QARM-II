@@ -4,7 +4,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from src.app_helpers import (get_choices, get_currency, get_data, get_profile, get_valid_portfolios, get_views,
-                             method_label)
+                             method_label, next_button)
 from src.black_litterman import posterior_returns, restrict_views
 from src.optimizer import portfolio_stats
 from src.planning import (HORIZON_YEARS, MANAGEMENT_FEE, client_report, order_list, simulate_wealth,
@@ -15,9 +15,9 @@ profile = get_profile()
 tickers, c = get_choices()
 currency = get_currency()
 returns, rf, prices = get_data(currency)
-portfolios = get_valid_portfolios(currency, tickers, profile.gamma, c, get_views())
+portfolios, gamma = get_valid_portfolios(profile, tickers, c)
 
-st.title("Your plan")
+st.title("4. Your plan")
 st.write("What could your portfolio become, and what do you buy today?")
 
 # ---------- Inputs ----------
@@ -90,4 +90,5 @@ st.caption(f"Prices of {prices.index[-1]:%d %B %Y}. ETFs are bought in whole sha
 
 # ---------- Report ----------
 report = client_report(profile, c, method_label(method), weights, exp_return, vol, currency, plan, orders, cash)
-st.download_button("📄 Download my report", report, file_name="robo_advisor_report.txt", type="primary")
+st.download_button("📄 Download my report", report, file_name="robo_advisor_report.txt")
+next_button("app_pages/backtest.py", "Next: how would it have worked in the past?")

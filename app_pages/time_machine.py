@@ -4,21 +4,21 @@ import plotly.express as px
 import streamlit as st
 
 from src.app_helpers import (get_benchmark, get_choices, get_currency, get_data, get_profile, get_valid_portfolios,
-                             get_views, method_label)
+                             get_views, method_label, next_button)
 from src.portfolios import METHODS
 from src.time_machine import CRISES, crisis_summary, replay
 
 profile = get_profile()
 tickers, c = get_choices()
 currency = get_currency()
-benchmark_name, benchmark = get_benchmark(tickers, c)
+benchmark_name, benchmark = get_benchmark(profile, tickers, c)
 
-st.title("⏳ Time machine")
+st.title("6. Time machine")
 st.write("What if you had bought your portfolio just before a crisis? "
          "We buy it on the day the market was at its peak and hold it.")
 
 returns, rf, prices = get_data(currency)
-portfolios = dict(get_valid_portfolios(currency, tickers, profile.gamma, c, get_views()))
+portfolios = dict(get_valid_portfolios(profile, tickers, c)[0])
 portfolios["Benchmark"] = benchmark
 
 col1, col2, col3 = st.columns(3)
@@ -73,3 +73,5 @@ for name, w in portfolios.items():
         row[f"{crisis_name}: months to recover"] = "not yet" if m is None else str(m)
     rows[method_label(name) if name != "Benchmark" else f"Benchmark: {benchmark_name}"] = row
 st.dataframe(pd.DataFrame(rows).T)
+
+next_button("app_pages/how_it_works.py", "Next: how does it work?")

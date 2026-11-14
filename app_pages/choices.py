@@ -1,7 +1,7 @@
 """Page 2: the client picks the products and can tighten the constraints of his profile."""
 import streamlit as st
 
-from src.app_helpers import get_currency, get_profile, recommendation_summary, show_profile_messages, tighten
+from src.app_helpers import get_currency, next_button, get_profile, recommendation_summary, show_profile_messages, tighten
 from src.data import ASSETS, available_assets, first_date
 from src.optimizer import check_constraints
 from src.portfolios import WINDOW
@@ -10,7 +10,7 @@ profile = get_profile()
 rec_assets = profile.recommended_assets
 rec_c = profile.recommended_constraints
 
-st.title("Your products and constraints")
+st.title("2. Your products and limits")
 st.write("We pre-selected **our recommendation** for your profile. You can choose other products, and you "
          "can make the limits **stricter** than your profile, but not looser: they come from your financial "
          "situation, horizon and liquidity needs.")
@@ -71,6 +71,10 @@ c = {
                                    saved_c["max_weight_per_asset"], 5),
 }
 
+st.caption("SHY (short-term Treasuries, almost cash) has no maximum. Narrow products (one sector or one country, "
+           "like REITs or emerging markets) are limited to 15% each." +
+           (" In CHF, SHY is not riskless: it carries the USD/CHF currency risk." if get_currency() == "CHF" else ""))
+
 # Save the choices for the next pages
 st.session_state["assets"] = tickers
 st.session_state["constraints"] = c
@@ -92,4 +96,4 @@ if not problems:
     summary = recommendation_summary(profile, get_currency(), tickers, c)
     if summary:
         st.info(summary)
-    st.page_link("app_pages/portfolio.py", label="Next: see your portfolio", icon="➡️")
+    next_button("app_pages/portfolio.py", "Next: see your portfolio")

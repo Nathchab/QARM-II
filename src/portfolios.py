@@ -7,13 +7,16 @@ import pandas as pd
 
 from src.black_litterman import market_weights, posterior_returns, restrict_views
 from src.data import ASSETS
-from src.optimizer import mean_variance, portfolio_stats, resampled, risk_parity
+from src.optimizer import gamma_for_max_volatility, mean_variance, portfolio_stats, resampled, risk_parity
 
 WINDOW = 60  # we estimate returns and risk on the last 60 months (5 years)
 METHODS = ["Black-Litterman", "Mean-variance", "Resampled MV", "Risk parity (ERC)"]
 RECOMMENDED_METHOD = "Black-Litterman"  # without views = market equilibrium returns, the most stable inputs
+# "Loss in a bad year" = expected return - 1.645 x volatility: with a normal distribution, a year is worse than
+# that with a probability of 5%. The client's answer to QE2 is the largest loss he can tolerate.
+BAD_YEAR = 1.645
 
-BENCHMARKS = (["Your profile: SPY up to your equity maximum, the rest AGG", "60/40 (60% SPY, 40% AGG)",
+BENCHMARKS = (["Same equity share as your portfolio (SPY + AGG)", "60/40 (60% SPY, 40% AGG)",
                "Equal weights (1/N) of your products",
                "Market portfolio of your products"]
               + [f"100% {t} ({name})" for t, (name, _) in ASSETS.items()])
@@ -43,6 +46,21 @@ def build_portfolios(mu, cov, rf, gamma, c, views, n_sim=100):
         except (ValueError, RuntimeError, np.linalg.LinAlgError) as error:
             errors[name] = str(error)
     return portfolios, errors
+
+
+def bad_year_loss(weights, forecast, cov):
+    """Loss in a bad year (5% chance of doing worse), e.g. -0.08 = -8%."""
+    ret, vol = portfolio_stats(weights, forecast, cov)
+    return ret - BAD_YEAR * vol
+
+
+def gamma_for_loss_limit(forecast, cov, gamma, c, max_loss):
+    """Risk aversion actually used: the client's gamma, raised if needed so that the recommended portfolio's
+    loss in a bad year stays within his answer to QE2 (max_loss, e.g. -0.10; None = more than 30%).
+    We ignore the expected return (prudent), so the volatility must be at most |max_loss| / 1.645."""
+    if max_loss is None:
+        return gamma
+    return gamma_for_max_volatility(forecast, cov, gamma, c, -max_loss / BAD_YEAR)
 
 
 def method_name(method, views):
@@ -75,10 +93,10 @@ def recommended_method(portfolios, forecast, cov):
     return min(better, key=lambda m: abs(portfolio_stats(portfolios[m], forecast, cov)[1] - vol))
 
 
-def benchmark_weights(name, tickers, c):
-    """Weights of the benchmark chosen by the client."""
-    if name.startswith("Your profile"):  # a simple stock/bond mix with the same equity limit as the client
-        return pd.Series({"SPY": c["max_equity"], "AGG": 1 - c["max_equity"]})
+def benchmark_weights(name, tickers, equity_share):
+    """Weights of the benchmark chosen by the client. equity_share: equities in the recommended portfolio."""
+    if name.startswith("Same equity share"):  # the simplest portfolio with the same stock/bond split as ours
+        return pd.Series({"SPY": equity_share, "AGG": 1 - equity_share})
     if name.startswith("60/40"):
         return pd.Series({"SPY": 0.6, "AGG": 0.4})
     if name.startswith("Equal"):

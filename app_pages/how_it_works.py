@@ -28,7 +28,18 @@ st.markdown("""
   only: for the bond minimum it would happily choose 20-year Treasuries (TLT), which can lose a lot when rates
   rise (about 30% in 2022). So money that may be needed within 3 years (QD1) or withdrawn within 12 months (QD2)
   must be in SHY: at least 60%/40% for QD1 "within 1 year"/"1–3 years" and 50%/25%/10% for QD2
-  ">50%"/"25–50%"/"10–25%". SHY is almost cash, so it may exceed the 40% maximum per product.
+  ">50%"/"25–50%"/"10–25%".
+- **Your loss limit (QE2) is respected.** QE2 asks for the largest temporary loss the client can tolerate. It is
+  part of the tolerance score, and it is also a hard limit: in a bad year (5% chance, normal distribution) the
+  recommended portfolio should not lose more. So its volatility must be at most |QE2| / 1.645 (5% → 3.0%,
+  10% → 6.1%, 20% → 12.2%, 30% → 18.2%). If the portfolio of γ is riskier, we raise γ to the smallest value that
+  respects the limit ("targeting a volatility", lab LN1, solved by bisection). Clients who tolerate at most 10%
+  always get SHY, the safe product. If even the safest portfolio inside the limits is too risky, we recommend
+  that safest portfolio and say so. This happens in CHF for a 5% limit: all our ETFs trade in USD, so even SHY
+  carries the USD/CHF currency risk (about 7% volatility per year in CHF).
+- **Diversification rules.** At most 40% in one product, except SHY (almost cash: no maximum). Narrow products
+  (one sector or country: QQQ, IWM, EWL, EWJ, EEM, VNQ, HYG, EMB, SLV) at most 15% each (core-satellite).
+  Without this rule the most tolerant clients got 35% in real estate and 21% in emerging markets.
 - **Why capacity does not change γ.** If capacity also raised γ, it would be counted twice (limits *and* a γ
   floor), and for most clients the risk tolerance would no longer change anything. Here a tolerant client with
   a low capacity gets the most dynamic portfolio *inside* the limits his situation allows.
@@ -95,7 +106,7 @@ st.write("Does not use expected returns at all: every asset brings the same shar
 
 st.header("4. Risk measures (lab LN2)")
 st.write("Beta with the covariance method β = cov(R_p, R_b) / var(R_b) and tracking error = volatility of "
-         "R_p − R_b, both against the benchmark chosen by the client (by default: SPY up to the client's equity maximum, the rest in AGG).")
+         "R_p − R_b, both against the benchmark chosen by the client (by default: SPY and AGG with the same equity share as the recommended portfolio).")
 
 st.header("5. Your plan")
 st.write("**Projection.** We simulate 5,000 possible futures of the portfolio, month by month (Monte Carlo, as for "

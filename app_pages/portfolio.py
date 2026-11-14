@@ -6,21 +6,22 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from src.app_helpers import (get_benchmark, get_choices, get_currency, get_data, get_profile,
-                             get_valid_portfolios, get_views, method_label, show_profile_messages)
+                             get_valid_portfolios, get_views, loss_limit_note, method_label, next_button,
+                             show_profile_messages)
 from src.black_litterman import (CONFIDENCE_LEVELS, EXTREME_VIEW, MAX_VIEWS, market_weights, posterior_returns,
                                   prior_returns, restrict_views, view_check, view_problems)
 from src.data import ASSETS, SHORT_TERM
 from src.optimizer import beta, class_exposures, frontier, portfolio_stats, risk_contributions, tracking_error
-from src.portfolios import METHODS, RECOMMENDED_METHOD, WINDOW, dominated_by, estimate
+from src.portfolios import METHODS, RECOMMENDED_METHOD, WINDOW, bad_year_loss, dominated_by, estimate
 
 CLASS_COLORS = {"Equity": "#1f77b4", "Bond": "#2ca02c", "Other": "#ff7f0e", "Crypto": "#9467bd"}
 
 profile = get_profile()
 tickers, c = get_choices()
 currency = get_currency()
-benchmark_name, benchmark = get_benchmark(tickers, c)
+benchmark_name, benchmark = get_benchmark(profile, tickers, c)
 
-st.title("Your portfolio")
+st.title("3. Your portfolio")
 returns, rf, prices = get_data(currency)
 mu, cov = estimate(returns[tickers])
 rf_now = rf.iloc[-1] * 12
@@ -106,7 +107,7 @@ if method == "Black-Litterman":
                    "a value of Q. Its uncertainty is Ω = τ·(PΣPᵀ)·(1 − c)/c, with c = 20%, 50%, 80% or 95%: "
                    "Medium gives the view the same uncertainty as the equilibrium.")
 
-portfolios = get_valid_portfolios(currency, tickers, profile.gamma, c, get_views())
+portfolios, gamma = get_valid_portfolios(profile, tickers, c)
 if method not in portfolios:
     method = next(iter(portfolios))
     st.info(f"Showing {method} instead.")
@@ -126,6 +127,18 @@ col2.metric("Volatility", f"{vol:.1%}")
 col3.metric("Sharpe ratio", f"{(ret - rf_now) / vol:.2f}" if vol > 0 else "–")
 col4.metric("Beta vs benchmark", f"{beta(past @ weights, benchmark_returns):.2f}",
             help=f"Benchmark: {benchmark_name} (you can change it on the backtest page)")
+loss = bad_year_loss(weights, forecast, cov)
+rec_loss = bad_year_loss(portfolios.get(RECOMMENDED_METHOD, weights), forecast, cov)
+note = loss_limit_note(profile, gamma, rec_loss, currency)
+if profile.max_loss is not None:
+    if loss >= profile.max_loss - 1e-4:
+        st.caption(f"In a bad year (5% chance) this portfolio could lose about {-loss:.1%}: within the "
+                   f"{-profile.max_loss:.0%} you can tolerate (QE2).")
+    elif method != RECOMMENDED_METHOD and loss < rec_loss - 1e-4:
+        st.warning(f"In a bad year (5% chance) this portfolio could lose about {-loss:.0%}, more than the "
+                   f"{-profile.max_loss:.0%} you can tolerate (QE2). Choose the recommended method instead.")
+if note:
+    (st.warning if rec_loss < profile.max_loss - 1e-4 else st.info)(note)
 col1, col2, col3, col4 = st.columns(4)
 col1.metric("In equities", f"{exposure['Equity']:.0%}", help=f"Your maximum: {c['max_equity']:.0%}")
 col2.metric("In bonds", f"{exposure['Bond']:.0%}", help=f"Your minimum: {c['min_bonds']:.0%}")
@@ -213,8 +226,8 @@ if not front.empty:
     st.write("Composition map (as in lab LN3): the optimal weights for every γ, with your limits and our forecast "
              "(this is the recommended method). The dashed line is your γ.")
     area = px.area(front, x="Gamma", y=list(mu.index), log_x=True)
-    area.add_vline(x=profile.gamma, line_dash="dash")
+    area.add_vline(x=min(gamma, front["Gamma"].max()), line_dash="dash")
     area.update_layout(yaxis_title="Weight", yaxis_tickformat=".0%", xaxis_title="γ (risk aversion)")
     st.plotly_chart(area)
 
-st.page_link("app_pages/plan.py", label="Next: your plan (projection, goal, orders, report)", icon="➡️")
+next_button("app_pages/plan.py", "Next: your plan (projection, goal, orders, report)")

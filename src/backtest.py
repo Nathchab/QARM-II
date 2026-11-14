@@ -20,7 +20,7 @@ import pandas as pd
 from src.black_litterman import posterior_returns, restrict_views
 from src.optimizer import mean_variance_with_costs
 from src.planning import MANAGEMENT_FEE
-from src.portfolios import WINDOW, build_portfolios
+from src.portfolios import WINDOW, build_portfolios, gamma_for_loss_limit
 
 N_SIM = 20  # fewer resampling simulations than on the portfolio page, so the backtest stays fast
 
@@ -34,7 +34,7 @@ def move_towards(old, target, max_turnover):
 
 
 def run_backtest(returns, rf, tickers, benchmark, gamma, c, views, start, end,
-                 rebalance=3, cost=0.001, cost_aware=True, max_turnover=2.0):
+                 rebalance=3, cost=0.001, cost_aware=True, max_turnover=2.0, max_loss=None):
     """
     returns: monthly returns of all products; tickers: products of the client.
     benchmark: weights of the benchmark. start, end: dates of the backtest.
@@ -54,7 +54,9 @@ def run_backtest(returns, rf, tickers, benchmark, gamma, c, views, start, end,
         if i % rebalance == 0:  # ---------- rebalancing ----------
             past = returns[tickers].iloc[t - WINDOW:t]
             mu, cov, rf_now = past.mean() * 12, past.cov() * 12, rf.iloc[t - 1] * 12
-            targets, errors = build_portfolios(mu, cov, rf_now, gamma, c, views, N_SIM)
+            bl_mu = posterior_returns(cov, rf_now, restrict_views(views, tickers))
+            g = gamma_for_loss_limit(bl_mu, cov, gamma, c, max_loss)  # same loss limit as on the portfolio page
+            targets, errors = build_portfolios(mu, cov, rf_now, g, c, views, N_SIM)
             if errors:  # a method failed on this date: we stop and show its message
                 raise RuntimeError(list(errors.values())[0])
             targets["Benchmark"] = benchmark
@@ -64,12 +66,11 @@ def run_backtest(returns, rf, tickers, benchmark, gamma, c, views, start, end,
             else:
                 limit = max_turnover
                 cost_in_optimisation = cost if cost_aware else 0.0
-                bl_mu = posterior_returns(cov, rf_now, restrict_views(views, tickers))
                 new = {
-                    "Mean-variance": mean_variance_with_costs(mu, cov, gamma, c, weights["Mean-variance"].values,
+                    "Mean-variance": mean_variance_with_costs(mu, cov, g, c, weights["Mean-variance"].values,
                                                               cost_in_optimisation, limit),
                     "Resampled MV": move_towards(weights["Resampled MV"], targets["Resampled MV"], limit),
-                    "Black-Litterman": mean_variance_with_costs(bl_mu, cov, gamma, c, weights["Black-Litterman"].values,
+                    "Black-Litterman": mean_variance_with_costs(bl_mu, cov, g, c, weights["Black-Litterman"].values,
                                                                 cost_in_optimisation, limit),
                     "Risk parity (ERC)": move_towards(weights["Risk parity (ERC)"], targets["Risk parity (ERC)"], limit),
                     "Benchmark": benchmark,  # the benchmark always goes back to its weights

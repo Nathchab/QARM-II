@@ -4,8 +4,8 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from src.optimizer import (check_constraints, frontier, mean_variance, mean_variance_with_costs, resampled,
-                           respects_limits, risk_contributions, risk_parity)
+from src.optimizer import (check_constraints, frontier, gamma_for_max_volatility, mean_variance, mean_variance_with_costs,
+                           portfolio_stats, resampled, respects_limits, risk_contributions, risk_parity, weight_bounds)
 
 NO_LIMIT = dict(max_equity=1., min_bonds=0., max_other=1., max_crypto=0., max_weight_per_asset=1.)
 
@@ -64,6 +64,17 @@ class MeanVarianceTests(unittest.TestCase):
         volatility = frontier(mu, cov, NO_LIMIT)["Volatility"]
         self.assertTrue((volatility.diff().dropna() <= 1e-9).all())
 
+    def test_target_volatility_raises_gamma_only_when_needed(self):
+        """Lab LN1 'targeting a volatility': the smallest gamma whose portfolio has at most the target volatility."""
+        mu = pd.Series([.08, .03, .05], index=["SPY", "AGG", "GLD"])
+        cov = diagonal_cov(mu.index, [.04, .01, .03])
+        vol = lambda g: portfolio_stats(mean_variance(mu, cov, g, NO_LIMIT), mu, cov)[1]
+        self.assertEqual(gamma_for_max_volatility(mu, cov, 2., NO_LIMIT, max_vol=.50), 2.)  # limit not binding
+        g = gamma_for_max_volatility(mu, cov, 2., NO_LIMIT, max_vol=.09)
+        self.assertGreater(g, 2.)
+        self.assertLessEqual(vol(g), .09 + 1e-6)
+        self.assertGreater(vol(g * .95), .09)  # a slightly smaller gamma would be too risky
+
     def test_resampling_gives_the_same_valid_portfolio_every_time(self):
         mu = pd.Series([.08, .03, .05], index=["SPY", "AGG", "GLD"])
         cov = diagonal_cov(mu.index, [.04, .01, .03])
@@ -120,11 +131,15 @@ class RiskParityTests(unittest.TestCase):
         self.assertGreater(np.abs(risk_contributions(w, self.cov) - .2).max(), .01)  # equal shares are impossible
 
     def test_limits_that_leave_a_single_portfolio(self):
-        """Equities exactly 20% and two bond products at their 40% maximum: the solver has almost no room."""
-        tickers = ["SPY", "AGG", "SHY"]
-        cov = diagonal_cov(tickers, [.03, .003, .0004])
+        """Equities at most 20% and two bond products at their 40% maximum: only 20/40/40 is possible."""
+        tickers = ["SPY", "AGG", "TLT"]
+        cov = diagonal_cov(tickers, [.03, .003, .02])
         c = dict(max_equity=.2, min_bonds=.6, max_other=.1, max_crypto=0., max_weight_per_asset=.4)
         np.testing.assert_allclose(risk_parity(cov, c), [.2, .4, .4], atol=1e-4)
+
+    def test_cash_and_satellite_products_have_their_own_maximum(self):
+        bounds = dict(zip(["SPY", "SHY", "VNQ"], weight_bounds(["SPY", "SHY", "VNQ"], NO_LIMIT | {"max_weight_per_asset": .4})))
+        self.assertEqual(bounds, {"SPY": (0, .4), "SHY": (0, 1.0), "VNQ": (0, .15)})
 
 
 if __name__ == "__main__":

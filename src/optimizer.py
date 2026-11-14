@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import LinearConstraint, linprog, minimize
 
-from src.data import ASSETS, SHORT_TERM
+from src.data import ASSETS, SATELLITE_MAX, SATELLITES, SHORT_TERM
 
 CLASSES = ["Equity", "Bond", "Other", "Crypto"]
 
@@ -38,10 +38,10 @@ def client_constraints(tickers, c, extra_variables=0):
 
 
 def weight_bounds(tickers, c):
-    """No short selling and maximum weight per product: 0 <= x_i <= max.
-    SHY is almost cash: it can hold more than the maximum per product if the client needs it (min_short_term)."""
+    """No short selling and a maximum weight per product: 0 <= x_i <= max.
+    SHY is almost cash, so it has no maximum; satellite products have at most SATELLITE_MAX."""
     cap = c["max_weight_per_asset"]
-    return [(0, max(cap, c.get("min_short_term", 0)) if t == SHORT_TERM else cap) for t in tickers]
+    return [(0, 1.0 if t == SHORT_TERM else min(cap, SATELLITE_MAX) if t in SATELLITES else cap) for t in tickers]
 
 
 def class_exposures(weights):
@@ -196,6 +196,26 @@ def frontier(mu, cov, c, gammas=np.geomspace(0.25, 200, 40)):
         ret, vol = portfolio_stats(w, mu, cov)
         rows.append({"Gamma": g, "Return": ret, "Volatility": vol, **w})
     return pd.DataFrame(rows)
+
+
+def gamma_for_max_volatility(mu, cov, gamma, c, max_vol):
+    """Lab LN1 'targeting a particular volatility': the smallest risk aversion (at least gamma) whose
+    mean-variance portfolio has a volatility of at most max_vol. Found by bisection: the volatility of the
+    optimal portfolio goes down when gamma goes up. If even gamma = 1000 is too risky, we return 1000
+    (the safest portfolio we can build with these products)."""
+    volatility = lambda g: portfolio_stats(mean_variance(mu, cov, g, c), mu, cov)[1]
+    if max_vol is None or volatility(gamma) <= max_vol:
+        return gamma
+    low, high = gamma, 1000.0
+    if volatility(high) > max_vol:
+        return high
+    for i in range(15):
+        middle = np.sqrt(low * high)
+        if volatility(middle) > max_vol:
+            low = middle
+        else:
+            high = middle
+    return high
 
 
 # ---------- Risk parity ----------

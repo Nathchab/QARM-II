@@ -128,7 +128,8 @@ class ClientProfile:
         if max_crypto == 0:
             tickers = [t for t in tickers if ASSETS[t][1] != "Crypto"]
         self.added_assets = []
-        if min_short_term > 0 and SHORT_TERM not in tickers:  # money needed soon -> short-term Treasuries
+        prudent = self.max_loss is not None and self.max_loss >= -0.10  # QE2: at most 5% or 10% of loss
+        if (min_short_term > 0 or prudent) and SHORT_TERM not in tickers:  # money needed soon or prudent client
             tickers.append(SHORT_TERM)
             self.added_assets.append(SHORT_TERM)
         for filler in FILLERS:
@@ -156,7 +157,7 @@ class ClientProfile:
         if min_short_term > 0:
             self.notes.append(f"You may need part of this money soon ({' and '.join(self.limit_sources['min_short_term'])}): "
                               f"at least {min_short_term:.0%} is kept in short-term Treasuries (SHY), which almost "
-                              "never lose value, instead of long bonds or equities.")
+                              "never lose value in US dollars, instead of long bonds or equities.")
         if self.safeguard:
             self.notes.append("Because of low savings or heavy commitments, your capacity is treated as "
                               "'Limited' at most.")

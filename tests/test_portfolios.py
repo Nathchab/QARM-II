@@ -6,7 +6,8 @@ import pandas as pd
 
 from src.black_litterman import posterior_returns
 from src.optimizer import portfolio_stats
-from src.portfolios import build_portfolios, dominated_by, method_name, recommended_method
+from src.portfolios import (bad_year_loss, build_portfolios, dominated_by, gamma_for_loss_limit, method_name,
+                            recommended_method)
 
 TICKERS = ["SPY", "EFA", "AGG", "TLT", "SHY", "GLD"]
 VOL = np.array([.16, .17, .05, .14, .02, .15])
@@ -30,6 +31,15 @@ class RecommendationTests(unittest.TestCase):
             self.assertEqual(dominated_by(portfolios, forecast, COV, "Black-Litterman"), [], gamma)
             self.assertEqual(recommended_method(portfolios, forecast, COV), "Black-Litterman")
             self.assertGreaterEqual(portfolios["Black-Litterman"]["SHY"], .1 - 1e-6)  # money needed soon
+
+    def test_the_loss_limit_of_qe2_is_respected(self):
+        forecast = posterior_returns(COV, .01, ())
+        for max_loss in [-.05, -.10, -.20, -.30]:
+            gamma = gamma_for_loss_limit(forecast, COV, 1.06, LIMITS, max_loss)  # very tolerant answers
+            portfolios, _ = build_portfolios(PAST, COV, .01, gamma, LIMITS, (), n_sim=5)
+            loss = bad_year_loss(portfolios["Black-Litterman"], forecast, COV)
+            self.assertGreaterEqual(loss, max_loss - 1e-4, max_loss)
+        self.assertEqual(gamma_for_loss_limit(forecast, COV, 1.06, LIMITS, None), 1.06)  # "more than 30%": no limit
 
     def test_a_dominated_recommendation_is_replaced_by_the_dominating_one(self):
         """AGG has a higher return than SPY with the same risk: 60/40 beats 70/30 (more return AND less risk)."""

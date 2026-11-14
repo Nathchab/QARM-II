@@ -48,7 +48,16 @@ equities, a minimum in bonds and maximums in gold/commodities and crypto. QD1 an
 maximum and bond minimum; the most restrictive source applies. Low savings or heavy commitments cap the tier
 at Limited. Money that may be needed soon (QD1 within 3 years, QD2 withdrawals of 10% or more) must be in
 short-term Treasuries (SHY), not in long bonds: minimum 60%/40% (QD1 a/b) and 50%/25%/10% (QD2 a/b/c).
-SHY is almost cash, so it may exceed the 40% maximum per product.
+
+**Loss limit (QE2).** In a bad year (5% chance) the recommended portfolio should not lose more than the loss the
+client can tolerate (QE2): volatility ≤ |QE2| / 1.645. If the portfolio of γ is riskier, γ is raised to the smallest
+value that respects the limit ("targeting a volatility", lab LN1). Clients who tolerate at most 10% always get SHY.
+If even the safest portfolio is too risky (in CHF with a 5% limit: every ETF, even SHY, carries USD/CHF currency
+risk), the app recommends the safest portfolio and warns the client.
+
+**Diversification.** At most 40% per product, except SHY (almost cash, no maximum); narrow "satellite" products
+(QQQ, IWM, EWL, EWJ, EEM, VNQ, HYG, EMB, SLV) at most 15% each. The default benchmark is SPY + AGG with the
+same equity share as the recommended portfolio.
 
 **Why capacity does not change γ.** A γ floor from capacity *and* capacity-based limits would count the
 same information twice, and for most clients the tolerance answers would then change nothing. Here a

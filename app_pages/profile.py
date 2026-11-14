@@ -2,13 +2,13 @@
 import pandas as pd
 import streamlit as st
 
-from src.app_helpers import get_currency, recommendation_summary, show_profile_messages
+from src.app_helpers import get_currency, next_button, recommendation_summary, show_profile_messages
 from src.client_profile import GAMMA_MAX, GAMMA_MIN, ClientProfile, gamma_from_rt, qe3_gamma_interval
 from src.data import ASSETS, available_assets
 from src.questionnaire import (CAPACITY, CRYPTO_CAP, CRYPTO_CHOICE, EXPERIENCE, HORIZON, QE3_PROFILES,
                                RISK_TOLERANCE, UNIVERSE, VIEWS_QUESTION, is_experienced, missing_answers)
 
-st.title("Robo-advisor: your investor profile")
+st.title("1. Your investor profile")
 st.write("Two things decide your portfolio: **how much risk you are willing to take** (your risk "
          "tolerance, which sets γ) and **how much risk you can afford** (your financial situation, "
          "horizon and liquidity needs, which set the allocation limits).")
@@ -105,7 +105,7 @@ if "profile" in st.session_state:
                    "you did not choose crypto" if CRYPTO_CHOICE not in profile.answers["QF1"]
                    else "your horizon or financial capacity" if profile.crypto_blocked
                    else "your choice (QF2) and financial capacity",
-                   "diversification rule"],
+                   "diversification rule (SHY: no maximum, narrow products: 15%)"],
     }))
     st.write("Recommended products: " + ", ".join(f"{t} ({ASSETS[t][0]})" for t in profile.recommended_assets))
 
@@ -128,4 +128,4 @@ if "profile" in st.session_state:
         st.write("Your financial situation does **not** change γ: it sets the allocation limits above. "
                  "This way your tolerance always matters, and your capacity is not counted twice.")
 
-    st.page_link("app_pages/choices.py", label="Next: choose your products and constraints", icon="➡️")
+    next_button("app_pages/choices.py", "Next: choose your products and limits")

@@ -3,7 +3,8 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from src.app_helpers import get_choices, get_currency, get_data, get_profile, get_views, method_label
+from src.app_helpers import (get_choices, get_currency, get_data, get_profile, get_views, method_label, next_button,
+                             recommended_equity_share)
 from src.backtest import N_SIM, performance, run_backtest
 from src.planning import MANAGEMENT_FEE
 from src.portfolios import BENCHMARKS, WINDOW, benchmark_weights
@@ -13,7 +14,7 @@ tickers, c = get_choices()
 currency = get_currency()
 returns, rf, prices = get_data(currency)
 
-st.title("Backtest: how would it have worked?")
+st.title("5. Backtest: how would it have worked?")
 st.write(f"At each rebalancing we re-estimate the inputs on the **past {WINDOW} months only** and "
          "re-optimise with your γ and your constraints (risk parity does not use γ). Between two "
          "rebalancings we hold the portfolio.")
@@ -55,19 +56,20 @@ st.session_state["bt_settings"] = {"period": period, "rebalancing": rebalancing,
 
 
 @st.cache_data(show_spinner=False, max_entries=100)
-def cached_backtest(currency, tickers, benchmark_name, gamma, c, views, period, rebalance, cost, cost_aware,
-                    max_turnover):
+def cached_backtest(currency, tickers, benchmark_name, equity_share, gamma, max_loss, c, views, period, rebalance, cost,
+                    cost_aware, max_turnover):
     returns, rf, prices = get_data(currency)
-    benchmark = benchmark_weights(benchmark_name, tickers, c)
+    benchmark = benchmark_weights(benchmark_name, tickers, equity_share)
     return run_backtest(returns, rf, tickers, benchmark, gamma, c, views, pd.Timestamp(period[0]),
-                        pd.Timestamp(period[1]), rebalance, cost, cost_aware, max_turnover)
+                        pd.Timestamp(period[1]), rebalance, cost, cost_aware, max_turnover, max_loss)
 
 
 cost = cost_bps / 10_000
 with st.spinner("Running the backtest (10 to 60 seconds the first time)..."):
     try:
         results, weights_history, turnover = cached_backtest(
-            currency, tickers, benchmark_name, profile.gamma, c, get_views(), period,
+            currency, tickers, benchmark_name, recommended_equity_share(profile, tickers, c), profile.gamma,
+            profile.max_loss, c, get_views(), period,
             REBALANCING[rebalancing], cost, cost_aware, max_turnover / 100)
     except (ValueError, RuntimeError) as error:
         st.error(f"The backtest could not be calculated on this period ({error}). Try another period or other products.")
@@ -110,3 +112,5 @@ method = st.selectbox("Method", list(weights_history)[:-1], format_func=method_l
 area = px.area(weights_history[method], title=f"Weights of {method_label(method)} at each rebalancing")
 area.update_layout(yaxis_tickformat=".0%", yaxis_title="Weight", xaxis_title=None, legend_title=None)
 st.plotly_chart(area)
+
+next_button("app_pages/time_machine.py", "Next: the time machine (past crises)")
