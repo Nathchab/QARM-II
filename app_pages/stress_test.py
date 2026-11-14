@@ -24,7 +24,7 @@ portfolios["Benchmark"] = benchmark
 col1, col2, col3 = st.columns(3)
 crisis = col1.selectbox("Crisis", list(CRISES))
 methods = [m for m in METHODS if m in portfolios]
-selected = client_method()
+selected = client_method(profile, tickers, c)
 method = col2.selectbox("Your portfolio", methods, index=methods.index(selected) if selected in methods else 0,
                         format_func=method_label)
 amount = col3.number_input(f"Amount invested ({currency})", min_value=1000, value=100_000, step=10_000)

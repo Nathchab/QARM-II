@@ -2,21 +2,31 @@
 The portfolios we offer to the client, and the benchmarks.
 Used by the app pages and by the backtest.
 
-Our recommendation for every client is "Market equilibrium": mean-variance (Markowitz) with the expected returns
-implied by the market (pi = rf + delta * Cov * w_market, "reverse optimisation"), because the average of the last
-5 years is a very noisy forecast (LN3). Black-Litterman is only for experienced investors who enter their own
-views (QH4): then it moves the equilibrium returns towards the views (LN4) and becomes the recommendation.
+Which method we recommend depends on the client (recommended_method):
+  - experienced investors who entered their own views (QH4) -> Black-Litterman: it moves the equilibrium
+    returns towards their views (LN4);
+  - very prudent clients (conservative tolerance, or at most 5% of loss in QE2) -> Minimum variance: they care
+    about risk much more than about return, and it needs no forecast of returns (no estimation error on mu);
+  - clients whose risk answers contradict each other (QE3 far from the other answers) -> Risk parity (ERC, LN5):
+    we cannot measure their gamma reliably, and risk parity does not need gamma (nor expected returns).
+    Only if it respects their loss limit (QE2), otherwise Market equilibrium;
+  - everybody else -> "Market equilibrium": mean-variance (Markowitz) with the expected returns implied by the
+    market (pi = rf + delta * Cov * w_market, "reverse optimisation"), because the average of the last 5 years is
+    a very noisy forecast (LN3).
+Mean-variance and resampled MV with past returns are shown for comparison only.
 """
 import numpy as np
 import pandas as pd
 
 from src.black_litterman import market_weights, posterior_returns, prior_returns, restrict_views
 from src.data import ASSETS
-from src.optimizer import gamma_for_max_volatility, mean_variance, portfolio_stats, resampled, risk_parity
+from src.optimizer import (gamma_for_max_volatility, mean_variance, minimum_variance, portfolio_stats, resampled,
+                           risk_parity)
 
 WINDOW = 60  # we estimate returns and risk on the last 60 months (5 years)
-METHODS = ["Equilibrium", "Black-Litterman", "Mean-variance", "Resampled MV", "Risk parity (ERC)"]
-LABELS = {"Equilibrium": "Market equilibrium (mean-variance)", "Black-Litterman": "Black-Litterman (your views)",
+METHODS = ["Equilibrium", "Minimum variance", "Black-Litterman", "Mean-variance", "Resampled MV", "Risk parity (ERC)"]
+LABELS = {"Equilibrium": "Market equilibrium (mean-variance)", "Minimum variance": "Minimum variance",
+          "Black-Litterman": "Black-Litterman (your views)",
           "Mean-variance": "Mean-variance (past returns)", "Resampled MV": "Resampled MV (past returns)",
           "Risk parity (ERC)": "Risk parity (ERC)"}
 # "Loss in a bad year" = expected return - 1.645 x volatility: with a normal distribution, a year is worse than
@@ -42,6 +52,7 @@ def build_portfolios(mu, cov, rf, gamma, c, views, n_sim=100):
     views = restrict_views(views, mu.index)  # ignore views on products not chosen
     methods = {
         "Equilibrium": lambda: mean_variance(prior_returns(cov, rf), cov, gamma, c),
+        "Minimum variance": lambda: minimum_variance(cov, c),
         "Black-Litterman": lambda: mean_variance(posterior_returns(cov, rf, views), cov, gamma, c),
         "Mean-variance": lambda: mean_variance(mu, cov, gamma, c),
         "Resampled MV": lambda: resampled(mu, cov, gamma, c, n_sim),
@@ -73,9 +84,17 @@ def gamma_for_loss_limit(forecast, cov, gamma, c, max_loss):
     return gamma_for_max_volatility(forecast, cov, gamma, c, -max_loss / BAD_YEAR)
 
 
-def recommended_method(views):
-    """Market equilibrium for every client; Black-Litterman only when an experienced client entered views."""
-    return "Black-Litterman" if views else "Equilibrium"
+def recommended_method(profile, portfolios, forecast, cov):
+    """The method we recommend to this client (rules at the top of this file)."""
+    if "Black-Litterman" in portfolios:  # built only when the client entered views
+        return "Black-Litterman"
+    if profile.very_prudent:
+        return "Minimum variance"
+    erc = portfolios.get("Risk parity (ERC)")
+    if profile.inconsistent and erc is not None and (
+            profile.max_loss is None or bad_year_loss(erc, forecast, cov) >= profile.max_loss - 1e-4):
+        return "Risk parity (ERC)"
+    return "Equilibrium"
 
 
 def dominated_by(portfolios, forecast, cov, method):

@@ -87,8 +87,11 @@ if profile.wants_views:
                "Medium gives the view the same uncertainty as the equilibrium.")
 
 views = restrict_views(get_views(), mu.index)
-recommended = recommended_method(views)
+# ONE forecast of the expected returns for every method, so that the portfolios can be compared:
+# the market equilibrium (plus the client's views). The average of the last 60 months is NOT a forecast.
+forecast = posterior_returns(cov, rf_now, views)
 portfolios, gamma = get_valid_portfolios(profile, tickers, c)
+recommended = recommended_method(profile, portfolios, forecast, cov)
 methods = [m for m in METHODS if m in portfolios]
 saved = st.session_state.get("method", recommended)
 default = saved if saved in methods else recommended if recommended in methods else methods[0]
@@ -98,6 +101,12 @@ st.session_state["method"] = method
 weights = portfolios[method]
 
 # ---------- Our recommendation: mean-variance with the market equilibrium returns ----------
+if method == "Minimum variance":
+    st.write("**Minimum variance:** the portfolio with the **lowest volatility** inside your limits. It does not use "
+             "any forecast of returns, so it cannot be wrong because of a bad forecast."
+             + (" We recommend it to you because you are very prudent (conservative tolerance or at most 5% of "
+                "loss in QE2): for you, avoiding losses matters much more than the expected return."
+                if recommended == "Minimum variance" else ""))
 if method in ("Equilibrium", "Black-Litterman"):
     st.write("**Where do the expected returns come from?** Not from the last 5 years: their average is a very noisy "
              "guess of the future (lab LN3). We use the **market equilibrium** π = r_f + δΣw_mkt, the returns that "
@@ -113,10 +122,6 @@ if method in ("Equilibrium", "Black-Litterman"):
         }).style.format({"Market weight": "{:.0%}", "Equilibrium return": "{:.1%}",
                          f"Historical return ({WINDOW} months)": "{:.1%}"}))
 
-# ONE forecast of the expected returns for every method, so that the portfolios can be compared:
-# the market equilibrium (plus the client's views). The average of the last 60 months is NOT a forecast.
-forecast = posterior_returns(cov, rf_now, views)
-
 # ---------- Key numbers ----------
 ret, vol = portfolio_stats(weights, forecast, cov)
 exposure = class_exposures(weights)
@@ -129,9 +134,12 @@ col4.metric("Beta vs benchmark", f"{beta(past @ weights, benchmark_returns):.2f}
             help=f"Benchmark: {benchmark_name} (you can change it on the backtest page)")
 loss = bad_year_loss(weights, forecast, cov)
 rec_loss = bad_year_loss(portfolios.get(recommended, weights), forecast, cov)
-note = loss_limit_note(profile, gamma, rec_loss, currency)
+note = loss_limit_note(profile, gamma, rec_loss, currency, recommended)
 if profile.max_loss is not None:
-    if loss >= profile.max_loss - 1e-4:
+    if loss >= 0:
+        st.caption("Even in a bad year (5% chance) this portfolio should not lose money: within the "
+                   f"{-profile.max_loss:.0%} you can tolerate (QE2).")
+    elif loss >= profile.max_loss - 1e-4:
         st.caption(f"In a bad year (5% chance) this portfolio could lose about {-loss:.1%}: within the "
                    f"{-profile.max_loss:.0%} you can tolerate (QE2).")
     elif method != recommended and loss < rec_loss - 1e-4:
@@ -151,7 +159,7 @@ binding = [name for key, (kind, name) in LIMITS.items()
            if abs(exposure[kind] - c[key]) <= 1e-6 and not (key in ("min_bonds", "max_crypto") and c[key] == 0)]
 if c.get("min_short_term", 0) > 0 and abs(weights.get(SHORT_TERM, 0) - c["min_short_term"]) <= 1e-6:
     binding.append("minimum in short-term Treasuries")
-if binding and method != "Risk parity (ERC)":
+if binding and method not in ("Risk parity (ERC)", "Minimum variance"):
     st.caption("Your limits are binding: " + ", ".join(binding) + ". Without them, the "
                "optimiser would choose a different mix for your γ.")
 
@@ -173,7 +181,12 @@ col2.plotly_chart(px.bar(table, x=table.index, y="Risk contribution", color="Cla
 
 # ---------- Is the recommended portfolio efficient? ----------
 better = dominated_by(portfolios, forecast, cov, recommended) if recommended in portfolios else []
-if better:
+if recommended == "Risk parity (ERC)":
+    st.info("We recommend risk parity because your risk answers contradict each other, so we cannot measure your γ "
+            "reliably: risk parity needs neither γ nor a forecast of returns, it simply spreads the risk evenly. "
+            + (f"With our forecast, {', '.join(method_label(m) for m in better)} would look better, but only if "
+               "the forecast and your γ are right." if better else ""))
+elif better:
     st.warning(f"With our forecast, {', '.join(method_label(m) for m in better)} gives a higher expected return "
                f"with less risk than {method_label(recommended)}: choose it instead.")
 else:
@@ -198,8 +211,8 @@ for m, w in portfolios.items():
 fig.update_layout(title="Efficient frontier with our forecast (the star is the method you selected)",
                   xaxis_title="Volatility", yaxis_title="Expected return", xaxis_tickformat=".0%", yaxis_tickformat=".1%")
 st.plotly_chart(fig)
-st.caption("Mean-variance and resampled mean-variance trust the average returns of the last 5 years, so with our "
-           "forecast they are below the frontier. Risk parity uses no expected returns at all: it gives up some "
+st.caption("Minimum variance is the left end of the frontier. Mean-variance and resampled mean-variance trust the "
+           "average returns of the last 5 years, so with our forecast they are below the frontier. Risk parity uses no expected returns at all: it gives up some "
            "expected return to spread the risk.")
 
 # ---------- Compare the methods ----------
@@ -224,7 +237,8 @@ st.caption(f"Benchmark: {benchmark_name}. Beta and tracking error (lab LN2) on t
 if not front.empty:
     st.subheader("What if your γ was different?")
     st.write("Composition map (as in lab LN3): the optimal weights for every γ, with your limits and our forecast "
-             "(this is the recommended method). The dashed line is your γ.")
+             "(the market equilibrium method; with a very high γ it becomes the minimum variance portfolio). "
+             "The dashed line is your γ.")
     area = px.area(front, x="Gamma", y=list(mu.index), log_x=True)
     area.add_vline(x=min(gamma, front["Gamma"].max()), line_dash="dash")
     area.update_layout(yaxis_title="Weight", yaxis_tickformat=".0%", xaxis_title="γ (risk aversion)")

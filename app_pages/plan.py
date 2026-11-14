@@ -3,12 +3,12 @@ import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
 
-from src.app_helpers import (get_choices, get_currency, get_data, get_profile, get_valid_portfolios, get_views,
-                             method_label, next_button)
+from src.app_helpers import (client_method, get_choices, get_currency, get_data, get_profile, get_valid_portfolios,
+                             get_views, method_label, next_button)
 from src.black_litterman import posterior_returns, restrict_views
 from src.optimizer import portfolio_stats
 from src.planning import HORIZON_YEARS, MANAGEMENT_FEE, order_list, simulate_wealth, worst_drawdowns
-from src.portfolios import METHODS, estimate, recommended_method
+from src.portfolios import METHODS, estimate
 from src.report import client_report
 
 profile = get_profile()
@@ -22,7 +22,7 @@ st.write("What could your portfolio become, and what do you buy today?")
 
 # ---------- Inputs ----------
 methods = [m for m in METHODS if m in portfolios]
-saved = st.session_state.get("method", recommended_method(get_views()))
+saved = client_method(profile, tickers, c)
 col1, col2, col3 = st.columns(3)
 method = col1.selectbox("Portfolio", methods, index=methods.index(saved) if saved in methods else 0,
                         format_func=method_label)

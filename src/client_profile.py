@@ -92,6 +92,10 @@ class ClientProfile:
         self.gamma = gamma_from_rt(self.rt)
         self.label = rt_label(self.rt)
         self.max_loss = QE2_MAX_LOSS[a["QE2"]]  # used by the stress test and the loss limit
+        # Very prudent: conservative tolerance or at most 5% of loss -> we recommend the minimum variance portfolio
+        self.very_prudent = self.label == "Conservative" or a["QE2"] == "a"
+        # Contradictory answers: the final gamma is at least two QE3 intervals away from the QE3 answer
+        self.inconsistent = qe3_distance(a["QE3"], self.gamma) >= 2
 
         # Experience -> can the client enter Black-Litterman views?
         self.experienced = is_experienced(a)
@@ -172,9 +176,10 @@ class ClientProfile:
         if self.added_assets:
             self.notes.append("To respect your limits we added: " + ", ".join(
                 f"{t} ({ASSETS[t][0]})" for t in self.added_assets) + ".")
-        # Only clear contradictions: the final gamma is at least two QE3 intervals away from the QE3 answer
-        if qe3_distance(a["QE3"], self.gamma) >= 2:
+        if self.inconsistent:  # only clear contradictions
             low, high = qe3_gamma_interval(a["QE3"])
             self.notes.append(f"Your answers point in different directions: your choice in QE3 alone implies "
                               f"γ between {low:.1f} and {'∞' if high == float('inf') else f'{high:.1f}'}, but your "
-                              f"four answers together give γ = {self.gamma:.1f}. You may want to review part 1.")
+                              f"four answers together give γ = {self.gamma:.1f}. You may want to review part 1. Until then we "
+                              "recommend risk parity, which does not need your risk aversion (if it respects the "
+                              "loss you can tolerate).")

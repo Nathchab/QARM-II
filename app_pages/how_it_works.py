@@ -46,10 +46,17 @@ st.markdown("""
 - **Warnings** are kept for material facts only: emergency savings below 3 months, significant commitments,
   money needed within a year, or likely withdrawals above 25%. Inconsistent tolerance answers are only
   flagged when the final γ is at least two QE3 intervals away from the QE3 answer.
-- **Recommendation.** For every client: mean-variance (Markowitz) with the **market equilibrium** returns
-  π = r_f + δΣw_mkt, the client's γ and his limits. Black-Litterman is **not** the default: it is only offered to
-  experienced investors who say they have their own views (QH4), and it becomes their recommendation only once
-  they enter at least one valid view.
+- **Which method we recommend.** Each method has its own type of client:
+
+  | Client | Recommended method | Why |
+  |---|---|---|
+  | Experienced investor who entered views (QH4) | Black-Litterman | uses his views, weighted by his confidence (LN4) |
+  | Very prudent: conservative tolerance, or at most 5% of loss (QE2) | Minimum variance | risk matters far more than return; needs no return forecast |
+  | Risk answers that contradict each other (γ two QE3 intervals away from QE3) | Risk parity (ERC) | needs neither γ nor a return forecast (LN5); only if it respects QE2 |
+  | Everybody else | Market equilibrium | mean-variance with π = r_f + δΣw_mkt, the client's γ and limits |
+
+  Mean-variance and resampled mean-variance with past returns are shown only to compare (they show why we do not
+  trust past averages).
 - **One forecast for all methods.** Every expected return shown in the app (portfolio page, frontier, plan) uses
   the same forecast: the market equilibrium (plus the views of an experienced client, if any). With this forecast the recommended portfolio
   is the optimal one for γ and the limits, so it is efficient: no other method has a higher expected return with
@@ -57,7 +64,7 @@ st.markdown("""
 - **Products.** The asset classes chosen in QF1 give the recommended products; crypto (QF2) is also capped by
   capacity. If the chosen classes cannot satisfy the limits (for example no bond product but a bond minimum), we
   add the missing products and say so.
-- **Risk parity** does not use γ: only the covariance and the allocation limits.
+- **Risk parity and minimum variance** do not use γ: only the covariance and the allocation limits.
 """)
 
 st.header("2. Data")
@@ -103,6 +110,10 @@ st.write("with c the confidence of question QH6 ("
          "σᵢ² + σⱼ² − 2σᵢⱼ. Medium gives the view the same uncertainty as the equilibrium. A view more than two "
          "standard deviations √(PΣPᵀ) away from the equilibrium value Pπ triggers a warning. Then we run "
          "mean-variance with μ_BL.")
+
+st.subheader("Minimum variance")
+st.write("The portfolio with the lowest volatility inside the client's limits: the same QP with μ = 0. It is the left "
+         "end of the efficient frontier, and the limit of mean-variance when γ becomes very large.")
 
 st.subheader("Risk parity / Equal Risk Contribution (lecture LN5)")
 st.latex(r"RC_i = \frac{x_i (\Sigma x)_i}{x^\top \Sigma x} = \frac{1}{n}")

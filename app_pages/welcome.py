@@ -16,8 +16,8 @@ STEPS = [
                              "financial situation, what you want to invest in and your experience."),
     ("🧩", "2. Products & limits", "We pre-select the ETFs and the allocation limits that fit your profile. "
                                   "You can change the products and make the limits stricter."),
-    ("📊", "3. Your portfolio", "Our recommendation: the mean-variance portfolio for your risk aversion, with "
-                               "the returns the market expects. Compared with other methods, so you can see why."),
+    ("📊", "3. Your portfolio", "The method that fits your profile (market equilibrium, minimum variance, risk "
+                               "parity or Black-Litterman), compared with the other methods, so you can see why."),
     ("🎯", "4. Your plan", "What your money could become with a monthly savings plan, the chance of reaching "
                           "your goal, the orders to place and a PDF report to download."),
     ("📈", "5. Backtest", "How the portfolio would have done in the past, rebalanced with the information "

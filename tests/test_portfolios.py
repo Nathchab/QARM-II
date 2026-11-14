@@ -1,5 +1,6 @@
 """The recommended portfolio: which method, and efficiency with our forecast."""
 import unittest
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -14,25 +15,32 @@ COV = pd.DataFrame(np.outer(VOL, VOL) * CORR, index=TICKERS, columns=TICKERS)
 PAST = pd.Series([.11, .07, -.02, -.10, .01, .14], index=TICKERS)  # noisy "last 5 years"
 LIMITS = dict(max_equity=.5, min_bonds=.3, min_short_term=.1, max_other=.15, max_crypto=0., max_weight_per_asset=.4)
 VIEW = (("GLD", None, .08, .5),)
+client = lambda prudent=False, inconsistent=False, max_loss=-.2: SimpleNamespace(
+    very_prudent=prudent, inconsistent=inconsistent, max_loss=max_loss)
 
 
 class RecommendationTests(unittest.TestCase):
     def test_black_litterman_only_for_clients_with_views(self):
-        self.assertEqual(recommended_method(()), "Equilibrium")
-        self.assertEqual(recommended_method(VIEW), "Black-Litterman")
         without, _ = build_portfolios(PAST, COV, .01, 3., LIMITS, (), n_sim=5)
         with_views, _ = build_portfolios(PAST, COV, .01, 3., LIMITS, VIEW, n_sim=5)
         self.assertNotIn("Black-Litterman", without)
         self.assertIn("Black-Litterman", with_views)
+        pi = posterior_returns(COV, .01, ())
+        self.assertEqual(recommended_method(client(), without, pi, COV), "Equilibrium")
+        self.assertEqual(recommended_method(client(prudent=True), without, pi, COV), "Minimum variance")
+        self.assertEqual(recommended_method(client(), with_views, pi, COV), "Black-Litterman")
+        self.assertEqual(recommended_method(client(inconsistent=True), without, pi, COV), "Risk parity (ERC)")
+        # risk parity is too risky for a client who accepts only 1% of loss: back to the market equilibrium
+        self.assertEqual(recommended_method(client(inconsistent=True, max_loss=-.01), without, pi, COV), "Equilibrium")
 
     def test_recommended_portfolio_is_never_dominated_with_our_forecast(self):
-        for views in [(), VIEW]:
+        for views, prudent in [((), False), ((), True), (VIEW, False)]:  # (risk parity is not mean-variance)
             forecast = posterior_returns(COV, .01, views)
             for gamma in [1.06, 2.7, 6., 10.6]:
                 portfolios, errors = build_portfolios(PAST, COV, .01, gamma, LIMITS, views, n_sim=10)
                 self.assertEqual(errors, {})
-                best = recommended_method(views)
-                self.assertEqual(dominated_by(portfolios, forecast, COV, best), [], (gamma, views))
+                best = recommended_method(client(prudent), portfolios, forecast, COV)
+                self.assertEqual(dominated_by(portfolios, forecast, COV, best), [], (gamma, views, best))
                 self.assertGreaterEqual(portfolios[best]["SHY"], .1 - 1e-6)  # money needed soon
 
     def test_the_loss_limit_of_qe2_is_respected(self):
@@ -43,6 +51,11 @@ class RecommendationTests(unittest.TestCase):
             loss = bad_year_loss(portfolios["Equilibrium"], forecast, COV)
             self.assertGreaterEqual(loss, max_loss - 1e-4, max_loss)
         self.assertEqual(gamma_for_loss_limit(forecast, COV, 1.06, LIMITS, None), 1.06)  # "more than 30%": no limit
+
+    def test_minimum_variance_has_the_lowest_risk(self):
+        portfolios, _ = build_portfolios(PAST, COV, .01, 3., LIMITS, VIEW, n_sim=5)
+        risk = {m: float(w @ COV @ w) for m, w in portfolios.items()}
+        self.assertEqual(min(risk, key=risk.get), "Minimum variance")
 
     def test_dominated_by_finds_more_return_with_less_risk(self):
         """AGG has a higher return than SPY with the same risk: 60/40 beats 70/30 (more return AND less risk)."""

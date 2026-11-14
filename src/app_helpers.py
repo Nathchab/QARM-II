@@ -72,9 +72,20 @@ def method_label(method):
     return LABELS.get(method, method)
 
 
-def client_method():
+def recommended(profile, tickers, c, views=None):
+    """The method we recommend to this client (rules in recommended_method)."""
+    views = get_views() if views is None else views
+    currency = get_currency()
+    portfolios, errors, gamma = get_portfolios(currency, tuple(tickers), profile.gamma, profile.max_loss, c, views)
+    returns, rf, prices = get_data(currency)
+    mu, cov = estimate(returns[list(tickers)])
+    forecast = posterior_returns(cov, rf.iloc[-1] * 12, restrict_views(views, mu.index))
+    return recommended_method(profile, portfolios, forecast, cov)
+
+
+def client_method(profile, tickers, c):
     """The client's portfolio: the method chosen on the portfolio page, by default our recommendation."""
-    return st.session_state.get("method", recommended_method(get_views()))
+    return st.session_state.get("method") or recommended(profile, tickers, c)
 
 
 YOURS, BENCHMARK_COLOR, OTHERS = "#e4572e", "#222222", "#b8b8b8"
@@ -96,7 +107,7 @@ def recommended_equity_share(profile, tickers, c):
     """Share of equities in the recommended portfolio (used by the default benchmark)."""
     views = get_views()
     portfolios, errors, gamma = get_portfolios(get_currency(), tuple(tickers), profile.gamma, profile.max_loss, c, views)
-    best = recommended_method(views)
+    best = recommended(profile, tickers, c)
     return class_exposures(portfolios[best])["Equity"] if best in portfolios else c["max_equity"]
 
 
@@ -142,28 +153,29 @@ def get_valid_portfolios(profile, tickers, c):
 
 
 def recommendation_summary(profile, currency, tickers, c):
-    """One sentence: what our recommendation (mean-variance with the market equilibrium returns) gives
-    for this client's gamma and limits. None if it cannot be calculated."""
+    """One sentence: what our recommendation gives for this client's gamma and limits (the client has not
+    entered views yet). None if it cannot be calculated."""
     try:
         portfolios, errors, gamma = get_portfolios(currency, tuple(tickers), profile.gamma, profile.max_loss, c, ())
         returns, rf, prices = get_data(currency)
         mu, cov = estimate(returns[list(tickers)])
-        w = portfolios["Equilibrium"]
+        best = recommended(profile, tickers, c, views=())
+        w = portfolios[best]
     except Exception:  # missing data or failed optimisation: no sentence (the pages show their own messages)
         return None
     exposure = class_exposures(w)
     vol = float((w @ cov @ w) ** 0.5)
     loss = bad_year_loss(w, posterior_returns(cov, rf.iloc[-1] * 12, ()), cov)
-    note = loss_limit_note(profile, gamma, loss, currency)
-    return (f"Our recommended portfolio for you has about {exposure['Equity']:.0%} in equities, "
+    note = loss_limit_note(profile, gamma, loss, currency, best)
+    return (f"Our recommended portfolio for you ({LABELS[best]}) has about {exposure['Equity']:.0%} in equities, "
             f"{exposure['Bond']:.0%} in bonds and {exposure['Other'] + exposure['Crypto']:.0%} in other assets, "
             f"with an estimated volatility of {vol:.1%} per year and a loss of about {-loss:.1%} in a bad year "
             "(5% chance)." + (" " + note if note else ""))
 
 
-def loss_limit_note(profile, gamma, loss, currency):
+def loss_limit_note(profile, gamma, loss, currency, method):
     """Explains how the loss limit of QE2 was applied to the recommended portfolio (None if nothing to say).
-    loss = bad-year loss of the recommended portfolio."""
+    loss = bad-year loss of the recommended portfolio `method`."""
     if profile.max_loss is None:
         return None
     if loss < profile.max_loss - 1e-4:  # even the safest portfolio inside the limits loses more
@@ -173,7 +185,7 @@ def loss_limit_note(profile, gamma, loss, currency):
         return (f"Even the safest portfolio within your limits could lose about {-loss:.0%} in a bad year, more "
                 f"than the {-profile.max_loss:.0%} you can tolerate (QE2): we recommend this safest portfolio "
                 f"(minimum risk). {advice}")
-    if gamma > profile.gamma + 1e-6:
+    if gamma > profile.gamma + 1e-6 and method != "Minimum variance":  # minimum variance does not use gamma
         return (f"Your answers give γ = {profile.gamma:.2f}, but with it the portfolio could lose more than "
                 f"{-profile.max_loss:.0%} in a bad year. We use γ = {gamma:.2f}: the closest risk aversion that "
                 "respects the loss you can tolerate (as 'targeting a volatility' in lab LN1).")

@@ -6,9 +6,8 @@ A Streamlit web app that works like a robo-advisor:
    *risk tolerance* (how much risk the client wants) and *risk capacity* (how much risk he can afford).
 2. **Your products & constraints**: recommended ETFs and crypto for the asset classes the client chose,
    with allocation limits that he can tighten but not relax.
-3. **Your portfolio**: Market equilibrium (recommended: mean-variance with the market-implied returns),
-   Mean-Variance and Resampled Mean-Variance (Michaud) with past returns, Risk Parity (ERC), and Black-Litterman
-   only for experienced investors who enter their own views. Weights, risk contributions, efficient frontier, beta,
+3. **Your portfolio**: the recommended method for the client's profile (market equilibrium, minimum variance,
+   risk parity or Black-Litterman), compared with mean-variance and resampled mean-variance on past returns. Weights, risk contributions, efficient frontier, beta,
    tracking error and a γ composition map.
 4. **Your plan**: projection of the client's wealth with a monthly savings plan (5,000 simulated futures), probability
    of reaching a savings goal and of a fall larger than the loss he accepts, the orders to place (number of shares
@@ -67,8 +66,11 @@ with an explanation rather than an alarm. Warnings are kept for material facts (
 significant commitments, money needed within a year, likely withdrawals above 25%). Every profile also gets
 one sentence with the equity/bond mix and volatility of its recommended portfolio.
 
-**Our recommendation: market equilibrium.** Mean-variance with the market equilibrium returns π = r_f + δΣw_mkt
-(reverse optimisation): more stable than the 60-month historical mean, which is shown only for comparison.
+**Which method we recommend.** Experienced investors who enter views → Black-Litterman. Very prudent clients
+(conservative tolerance or at most 5% of loss in QE2) → minimum variance (no return forecast needed). Clients whose
+risk answers contradict each other → risk parity (needs no γ), if it respects their loss limit. Everybody else →
+**market equilibrium**: mean-variance with π = r_f + δΣw_mkt (reverse optimisation), more stable than the 60-month
+historical mean, which is shown only for comparison.
 **Black-Litterman is not the default:** it is offered only to experienced investors with views, and becomes their
 recommendation once they enter at least one valid view. **One forecast for every method:** the expected returns
 shown for all methods (and in the efficient frontier and the plan) use the same forecast (π, or μ_BL with views),

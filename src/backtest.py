@@ -66,7 +66,8 @@ def run_backtest(returns, rf, tickers, benchmark, gamma, c, views, start, end,
             else:
                 limit = max_turnover
                 cost_in_optimisation = cost if cost_aware else 0.0
-                forecasts = {"Equilibrium": prior_returns(cov, rf_now), "Mean-variance": mu, "Black-Litterman": bl_mu}
+                forecasts = {"Equilibrium": prior_returns(cov, rf_now), "Minimum variance": 0 * mu, "Mean-variance": mu,
+                             "Black-Litterman": bl_mu}  # minimum variance = mean-variance with mu = 0
                 new = {}
                 for name in targets:
                     if name == "Benchmark":  # the benchmark always goes back to its weights

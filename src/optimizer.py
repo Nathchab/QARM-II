@@ -140,6 +140,12 @@ def mean_variance(mu, cov, risk_aversion, c):
     return pd.Series(res.x, index=tickers)
 
 
+def minimum_variance(cov, c):
+    """Portfolio with the lowest volatility inside the client's limits: no expected returns needed
+    (mean-variance with mu = 0)."""
+    return mean_variance(pd.Series(0.0, index=cov.index), cov, 1.0, c)
+
+
 def mean_variance_with_costs(mu, cov, risk_aversion, c, x0, cost, max_turnover=2.0):
     """
     LN3 'transaction cost management' and 'turnover management'.

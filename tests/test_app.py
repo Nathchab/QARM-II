@@ -80,10 +80,12 @@ class LossLimitNoteTests(unittest.TestCase):
     def test_note_explains_raised_gamma_and_impossible_limit(self):
         from src.app_helpers import loss_limit_note
         prudent = ClientProfile(dict(ANSWERS, QE1="a", QE2="a", QE3="a", QE4="a"))  # tolerates at most -5%
-        self.assertIsNone(loss_limit_note(prudent, prudent.gamma, -0.04, "USD"))
-        self.assertIn("closest risk aversion", loss_limit_note(prudent, prudent.gamma * 2, -0.05, "USD"))
-        self.assertIn("currency risk", loss_limit_note(prudent, 1000.0, -0.09, "CHF"))
-        self.assertIsNone(loss_limit_note(ClientProfile(ANSWERS), 3.0, -0.40, "USD"))  # "more than 30%": no limit
+        self.assertIsNone(loss_limit_note(prudent, prudent.gamma, -0.04, "USD", "Equilibrium"))
+        self.assertIn("closest risk aversion",
+                      loss_limit_note(prudent, prudent.gamma * 2, -0.05, "USD", "Equilibrium"))
+        self.assertIsNone(loss_limit_note(prudent, prudent.gamma * 2, -0.05, "USD", "Minimum variance"))  # no gamma
+        self.assertIn("currency risk", loss_limit_note(prudent, 1000.0, -0.09, "CHF", "Minimum variance"))
+        self.assertIsNone(loss_limit_note(ClientProfile(ANSWERS), 3.0, -0.40, "USD", "Equilibrium"))  # no limit
 
 
 if __name__ == "__main__":

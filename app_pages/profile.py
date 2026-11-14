@@ -65,8 +65,8 @@ if submitted:
         st.error("Please answer every question (missing: " + ", ".join(missing) + ").")
     else:
         st.session_state["profile"] = ClientProfile(answers)
-        # new profile -> we start again from our recommended products and constraints
-        for key in ["assets", "constraints"] + [k for k in st.session_state if k.startswith("pick_")]:
+        # new profile -> we start again from our recommended products, constraints and method
+        for key in ["assets", "constraints", "method"] + [k for k in st.session_state if k.startswith("pick_")]:
             st.session_state.pop(key, None)
 
 # ---------- Show profile (stays visible for the next pages) ----------
@@ -90,7 +90,7 @@ if "profile" in st.session_state:
     show_profile_messages(profile, notes=True)
     st.caption("Experienced investor: " + ("yes" if profile.experienced else "no")
                + (" · Your own market views: yes (Black-Litterman, on the portfolio page)" if profile.wants_views
-                  else " · Recommended portfolio: market equilibrium, no personal views"))
+                  else " · Your own market views: no"))
 
     st.subheader("Your allocation limits")
     st.table(pd.DataFrame({

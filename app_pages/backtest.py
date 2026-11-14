@@ -79,7 +79,8 @@ if len(results) < 12:
     st.error("The period is too short (or the benchmark has no data on it). Choose a longer period.")
     st.stop()
 # The client's portfolio first and clearly named, then the benchmark, then the other methods (for comparison)
-mine = client_method() if client_method() in results.columns else results.columns[0]
+mine = client_method(profile, tickers, c)
+mine = mine if mine in results.columns else results.columns[0]
 yours, bench = f"★ Your portfolio: {method_label(mine)}", f"Benchmark: {benchmark_name}"
 names = {m: method_label(m) for m in results.columns} | {mine: yours, "Benchmark": bench}
 order = [yours, bench] + [names[m] for m in results.columns if m not in (mine, "Benchmark")]
