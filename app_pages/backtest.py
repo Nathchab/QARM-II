@@ -4,10 +4,10 @@ import plotly.express as px
 import streamlit as st
 
 from src.app_helpers import (YOURS, client_method, explain, get_choices, get_currency, get_data, get_profile, get_views,
-                             highlight_lines, method_label, next_button, recommended_equity_share)
+                             get_benchmark, highlight_lines, method_label, next_button)
 from src.backtest import N_SIM, performance, run_backtest
 from src.planning import MANAGEMENT_FEE
-from src.portfolios import BENCHMARKS, WINDOW, benchmark_weights
+from src.portfolios import BENCHMARKS, WINDOW
 
 profile = get_profile()
 tickers, c = get_choices()
@@ -44,8 +44,8 @@ with st.form("settings"):
     cost_bps = col2.slider("Transaction cost (basis points of the amount traded)", 0, 100, s["cost_bps"],
                            help="10 bp = 0.10%. Typical for ETFs: 5 to 20 bp.")
     max_turnover = col1.slider("Maximum turnover per rebalancing (%)", 5, 200, s["max_turnover"], 5,
-                               help="Turnover = sum of |new weight - old weight|. 200% = no limit (LN3).")
-    cost_aware = col2.checkbox("Cost-aware optimisation (LN3)", s["cost_aware"],
+                               help="Turnover = sum of |new weight - old weight|. 200% = no limit.")
+    cost_aware = col2.checkbox("Cost-aware optimisation", s["cost_aware"],
                                help="The mean-variance methods (market equilibrium, past returns, Black-Litterman) "
                                     "include the costs in the optimisation, so they only trade when it is worth it.")
     st.form_submit_button("Run the backtest", type="primary")
@@ -56,10 +56,9 @@ st.session_state["bt_settings"] = {"period": period, "rebalancing": rebalancing,
 
 
 @st.cache_data(show_spinner=False, max_entries=100)
-def cached_backtest(currency, tickers, benchmark_name, equity_share, gamma, max_loss, c, views, period, rebalance, cost,
-                    cost_aware, max_turnover):
+def cached_backtest(currency, tickers, benchmark, gamma, max_loss, c, views, period, rebalance, cost, cost_aware,
+                    max_turnover):
     returns, rf, prices = get_data(currency)
-    benchmark = benchmark_weights(benchmark_name, tickers, equity_share)
     return run_backtest(returns, rf, tickers, benchmark, gamma, c, views, pd.Timestamp(period[0]),
                         pd.Timestamp(period[1]), rebalance, cost, cost_aware, max_turnover, max_loss)
 
@@ -68,9 +67,8 @@ cost = cost_bps / 10_000
 with st.spinner("Running the backtest (10 to 60 seconds the first time)..."):
     try:
         results, weights_history, turnover = cached_backtest(
-            currency, tickers, benchmark_name, recommended_equity_share(profile, tickers, c), profile.gamma,
-            profile.max_loss, c, get_views(), period,
-            REBALANCING[rebalancing], cost, cost_aware, max_turnover / 100)
+            currency, tickers, get_benchmark(profile, tickers, c)[1], profile.gamma, profile.max_loss, c, get_views(),
+            period, REBALANCING[rebalancing], cost, cost_aware, max_turnover / 100)
     except (ValueError, RuntimeError) as error:
         st.error(f"The backtest could not be calculated on this period ({error}). Try another period or other products.")
         st.stop()

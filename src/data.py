@@ -75,7 +75,7 @@ REGION_SHARES = {
     "CSBGC3.SW": {"Switzerland": 1}, "CSBGC7.SW": {"Switzerland": 1}, "CSBGC0.SW": {"Switzerland": 1},
     "CHCORP.SW": {"Switzerland": 1},
     "EWJ": {"Japan & Pacific": 1}, "EEM": {"Emerging markets": 1}, "EMB": {"Emerging markets": 1},
-    "BNDX": {"Europe": .60, "Japan & Pacific": .20, "North America": .07, "Emerging markets": .13},
+    "BNDX": {"Europe": .58, "Japan & Pacific": .22, "North America": .07, "Emerging markets": .13},
     "BWX": {"Europe": .50, "Japan & Pacific": .30, "North America": .08, "Emerging markets": .12},
     **{t: {"Gold, commodities, crypto": 1} for t in ["GLD", "SLV", "DBC", "BTC-USD", "ETH-USD"]},
 }

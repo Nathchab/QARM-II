@@ -13,6 +13,7 @@ from src.black_litterman import (CONFIDENCE_LEVELS, EXTREME_VIEW, MAX_VIEWS, mar
 from src.data import ASSETS
 from src.optimizer import (beta, class_exposures, frontier, home_row, portfolio_stats, region_exposures,
                            risk_contributions, short_term_row, tracking_error)
+from src.planning import MANAGEMENT_FEE
 from src.portfolios import METHODS, WHY, WINDOW, bad_year_loss, dominated_by, estimate, recommended_method
 
 CLASS_COLORS = {"Equity": "#1f77b4", "Bond": "#2ca02c", "Other": "#ff7f0e", "Crypto": "#9467bd"}
@@ -34,14 +35,15 @@ show_profile_messages(profile)
 past = returns[tickers].dropna().iloc[-WINDOW:]
 benchmark_returns = returns.loc[past.index, benchmark.index].fillna(0) @ benchmark
 
-# ---------- Only for experienced investors who want it (QH4): their views, with Black-Litterman (LN4) ----------
+# ---------- Only for experienced investors who want it (QH4): their views, with Black-Litterman ----------
 prior = prior_returns(cov, rf_now)
 if profile.wants_views:
     st.subheader("Your views on the markets (Black-Litterman)")
-    st.write("You told us that you have your own views (QH4). Black-Litterman (lecture LN4) moves the market "
+    st.write("You told us that you have your own views (QH4). Black-Litterman moves the market "
              "equilibrium returns towards your views, as much as your confidence allows. Add a view only where you "
              "have a real conviction. **Absolute**: “GLD will return 6% per year”. **Relative**: “EEM will beat SPY "
-             "by 3% per year”. With at least one valid view, Black-Litterman becomes our recommendation.")
+             "by 3% per year”. With at least one valid view, Black-Litterman becomes our recommendation"
+             + (" (not for you: you may need this money within a year)." if profile.preserve_capital else "."))
     saved_views = list(restrict_views(st.session_state.get("views", ()), mu.index))
     products = list(mu.index)
     levels = list(CONFIDENCE_LEVELS)
@@ -94,7 +96,7 @@ forecast = posterior_returns(cov, rf_now, views)
 portfolios, gamma = get_valid_portfolios(profile, tickers, c)
 recommended = recommended_method(profile, portfolios, forecast, cov)
 methods = [m for m in METHODS if m in portfolios]
-saved = st.session_state.get("method", recommended)
+saved = st.session_state.get("method") or recommended  # the client's own choice, otherwise our recommendation
 default = saved if saved in methods else recommended if recommended in methods else methods[0]
 # ---------- Our recommendation, clearly visible ----------
 with st.container(border=True):
@@ -106,19 +108,19 @@ method = st.radio("Choose a method to look at", methods, horizontal=True, index=
                   else method_label(m))
 if method != recommended:
     st.warning(f"You are looking at {method_label(method)}, not at our recommendation.")
-st.session_state["method"] = method
+# We remember the method only if the client chose another one: otherwise he follows our recommendation,
+# even when it changes (for example after he enters views)
+st.session_state["method"] = method if method != recommended else None
 weights = portfolios[method]
 
 # ---------- Our recommendation: mean-variance with the market equilibrium returns ----------
 if method == "Minimum variance":
     st.write("**Minimum variance:** the portfolio with the **lowest volatility** inside your limits. It does not use "
-             "any forecast of returns, so it cannot be wrong because of a bad forecast."
-             + (" We recommend it to you because you are very prudent (conservative tolerance or at most 5% of "
-                "loss in QE2): for you, avoiding losses matters much more than the expected return."
-                if recommended == "Minimum variance" else ""))
+             "any forecast of returns, so it cannot be wrong because of a bad forecast. "
+             "It is what we recommend when the money may be needed within a year.")
 if method in ("Equilibrium", "Black-Litterman"):
     st.write("**Where do the expected returns come from?** Not from the last 5 years: their average is a very noisy "
-             "guess of the future (lab LN3). We use the **market equilibrium** π = r_f + δΣw_mkt, the returns that "
+             "guess of the future. We use the **market equilibrium** π = r_f + δΣw_mkt, the returns that "
              "make the market portfolio optimal, i.e. what the market as a whole expects for the risk of each "
              "product. Then the mean-variance optimiser (Markowitz) chooses the best mix for your γ and your limits."
              + (" Black-Litterman moves π towards your views." if method == "Black-Litterman" else ""))
@@ -146,6 +148,10 @@ explain(profile, "**Expected return**: what the portfolio should earn per year o
                  "the return stays within ± one volatility of the expected return. **Sharpe ratio**: extra return "
                  "per unit of risk, compared with a riskless investment (higher is better). **Beta**: if the "
                  "benchmark moves by 1%, your portfolio moves on average by beta %.")
+if ret - MANAGEMENT_FEE < rf_now:  # honest advice: this portfolio is not worth our fee
+    st.warning(f"After our fee of {MANAGEMENT_FEE:.2%} per year, this portfolio is expected to earn less than a "
+               f"riskless investment ({rf_now:.1%} per year today). For this money, a savings account or a "
+               "money-market fund is a better choice than a managed portfolio.")
 loss = bad_year_loss(weights, forecast, cov)
 rec_loss = bad_year_loss(portfolios.get(recommended, weights), forecast, cov)
 note = loss_limit_note(profile, gamma, rec_loss, currency, recommended)
@@ -272,7 +278,7 @@ table.columns = [method_label(m) for m in table.columns]
 rec_col = method_label(recommended)
 st.dataframe(table.style.format("{:.1%}").format("{:.2f}", subset=pd.IndexSlice[["Beta vs benchmark"], :])
              .set_properties(subset=[rec_col], **{"background-color": "#fde4dc", "font-weight": "bold"}))
-st.caption(f"Benchmark: {benchmark_name}. Beta and tracking error (lab LN2) on the last {WINDOW} months. "
+st.caption(f"Benchmark: {benchmark_name}. Beta and tracking error on the last {WINDOW} months. "
            f"The past average is not a forecast: mean-variance was built to be the best portfolio for exactly these "
            "past returns, so of course it looks best on them. The backtest (page 5) compares the methods fairly, "
            "out of sample.")
@@ -282,7 +288,7 @@ explain(profile, "Each column is one method (ours is highlighted): the weights o
 # ---------- Composition map (lab LN3): sensitivity to gamma ----------
 if not front.empty:
     st.subheader("What if your γ was different?")
-    st.write("Composition map (as in lab LN3): the optimal weights for every γ, with your limits and our forecast "
+    st.write("Composition map: the optimal weights for every γ, with your limits and our forecast "
              "(the market equilibrium method; with a very high γ it becomes the minimum variance portfolio). "
              "The dashed line is your γ.")
     area = px.area(front, x="Gamma", y=list(mu.index), log_x=True)

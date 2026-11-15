@@ -6,7 +6,8 @@ import numpy as np
 import pandas as pd
 
 from src.black_litterman import posterior_returns
-from src.portfolios import bad_year_loss, build_portfolios, dominated_by, gamma_for_loss_limit, recommended_method
+from src.portfolios import (BENCHMARKS, bad_year_loss, benchmark_weights, build_portfolios, dominated_by,
+                            gamma_for_loss_limit, recommended_method)
 
 TICKERS = ["SPY", "EFA", "AGG", "TLT", "SHY", "GLD"]
 VOL = np.array([.16, .17, .05, .14, .02, .15])
@@ -15,8 +16,8 @@ COV = pd.DataFrame(np.outer(VOL, VOL) * CORR, index=TICKERS, columns=TICKERS)
 PAST = pd.Series([.11, .07, -.02, -.10, .01, .14], index=TICKERS)  # noisy "last 5 years"
 LIMITS = dict(max_equity=.5, min_bonds=.3, min_short_term=.1, max_other=.15, max_crypto=0., max_weight_per_asset=.4)
 VIEW = (("GLD", None, .08, .5),)
-client = lambda prudent=False, inconsistent=False, max_loss=-.2: SimpleNamespace(
-    very_prudent=prudent, inconsistent=inconsistent, max_loss=max_loss)
+client = lambda preserve=False, inconsistent=False, max_loss=-.2: SimpleNamespace(
+    preserve_capital=preserve, inconsistent=inconsistent, max_loss=max_loss)
 
 
 class RecommendationTests(unittest.TestCase):
@@ -27,19 +28,20 @@ class RecommendationTests(unittest.TestCase):
         self.assertIn("Black-Litterman", with_views)
         pi = posterior_returns(COV, .01, ())
         self.assertEqual(recommended_method(client(), without, pi, COV), "Equilibrium")
-        self.assertEqual(recommended_method(client(prudent=True), without, pi, COV), "Minimum variance")
+        self.assertEqual(recommended_method(client(preserve=True), without, pi, COV), "Minimum variance")
         self.assertEqual(recommended_method(client(), with_views, pi, COV), "Black-Litterman")
+        self.assertEqual(recommended_method(client(preserve=True), with_views, pi, COV), "Minimum variance")  # safety
         self.assertEqual(recommended_method(client(inconsistent=True), without, pi, COV), "Risk parity (ERC)")
         # risk parity is too risky for a client who accepts only 1% of loss: back to the market equilibrium
         self.assertEqual(recommended_method(client(inconsistent=True, max_loss=-.01), without, pi, COV), "Equilibrium")
 
     def test_recommended_portfolio_is_never_dominated_with_our_forecast(self):
-        for views, prudent in [((), False), ((), True), (VIEW, False)]:  # (risk parity is not mean-variance)
+        for views, preserve in [((), False), ((), True), (VIEW, False)]:  # (risk parity is not mean-variance)
             forecast = posterior_returns(COV, .01, views)
             for gamma in [1.06, 2.7, 6., 10.6]:
                 portfolios, errors = build_portfolios(PAST, COV, .01, gamma, LIMITS, views, n_sim=10)
                 self.assertEqual(errors, {})
-                best = recommended_method(client(prudent), portfolios, forecast, COV)
+                best = recommended_method(client(preserve), portfolios, forecast, COV)
                 self.assertEqual(dominated_by(portfolios, forecast, COV, best), [], (gamma, views, best))
                 self.assertGreaterEqual(portfolios[best]["SHY"], .1 - 1e-6)  # money needed soon
 
@@ -65,6 +67,10 @@ class RecommendationTests(unittest.TestCase):
                       "Mean-variance": pd.Series([.6, .4], index=forecast.index),
                       "Risk parity (ERC)": pd.Series([.9, .1], index=forecast.index)}
         self.assertEqual(dominated_by(portfolios, forecast, cov, "Equilibrium"), ["Mean-variance"])
+
+    def test_default_benchmark_has_bonds_in_the_currency_of_the_client(self):
+        self.assertEqual(dict(benchmark_weights(BENCHMARKS[0], TICKERS, .6, "USD")), {"SPY": .6, "AGG": .4})
+        self.assertEqual(dict(benchmark_weights(BENCHMARKS[0], TICKERS, .6, "CHF")), {"SPY": .6, "CSBGC7.SW": .4})
 
 
 if __name__ == "__main__":

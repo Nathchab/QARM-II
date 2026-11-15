@@ -1,7 +1,8 @@
 """Page 2: the client picks the products and can tighten the constraints of his profile."""
 import streamlit as st
 
-from src.app_helpers import get_currency, next_button, get_profile, recommendation_summary, show_profile_messages, tighten
+from src.app_helpers import (get_currency, get_profile, next_button, recommendation_summary, reset_choices,
+                             show_profile_messages, tighten)
 from src.data import ASSETS, SHORT_TERM, available_assets, first_date
 from src.optimizer import check_constraints
 from src.portfolios import WINDOW
@@ -16,8 +17,7 @@ st.write("We pre-selected **our recommendation** for your profile. You can choos
          "situation, horizon and liquidity needs.")
 
 if st.button("↩️ Back to our recommendation"):
-    for key in ["assets", "constraints"] + [k for k in st.session_state if k.startswith("pick_")]:
-        st.session_state.pop(key, None)
+    reset_choices()
     st.rerun()
 
 saved_assets = st.session_state.get("assets", rec_assets)
@@ -63,7 +63,7 @@ c = {
     "max_equity": slider(col1, "Maximum in equities", "max_equity", 0, rec_c["max_equity"], saved_c["max_equity"], 5),
     "min_bonds": slider(col2, "Minimum in bonds", "min_bonds", rec_c["min_bonds"], 1, saved_c["min_bonds"], 5),
     "min_short_term": slider(col2, "Minimum in short-term government bonds", "min_short_term", rec_c["min_short_term"],
-                             max(rec_c["min_short_term"], rec_c["max_weight_per_asset"]), saved_c["min_short_term"], 5),
+                             1, saved_c["min_short_term"], 5),
     "max_other": slider(col1, "Maximum in gold and commodities", "max_other", 0, rec_c["max_other"],
                         saved_c["max_other"], 5),
     "max_crypto": slider(col2, "Maximum in crypto", "max_crypto", 0, rec_c["max_crypto"], saved_c["max_crypto"], 1),
@@ -100,7 +100,7 @@ for p in problems:
     st.error(p)
 if not problems:
     st.success(f"{len(tickers)} products selected. Your constraints are feasible.")
-    summary = recommendation_summary(profile, get_currency(), tickers, c)
+    summary = recommendation_summary(profile, tickers, c)
     if summary:
         st.info(summary)
     next_button("app_pages/portfolio.py", "Next: see your portfolio")

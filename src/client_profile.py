@@ -92,8 +92,9 @@ class ClientProfile:
         self.gamma = gamma_from_rt(self.rt)
         self.label = rt_label(self.rt)
         self.max_loss = QE2_MAX_LOSS[a["QE2"]]  # used by the stress test and the loss limit
-        # Very prudent: conservative tolerance or at most 5% of loss -> we recommend the minimum variance portfolio
-        self.very_prudent = self.label == "Conservative" or a["QE2"] == "a"
+        # Money needed within a year, or more than half may be withdrawn within 12 months: the goal is to keep the
+        # capital, not to make it grow -> we recommend the minimum variance portfolio
+        self.preserve_capital = a["QD1"] == "a" or a["QD2"] == "a"
         # Contradictory answers: the final gamma is at least two QE3 intervals away from the QE3 answer
         self.inconsistent = qe3_distance(a["QE3"], self.gamma) >= 2
 

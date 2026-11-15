@@ -55,12 +55,17 @@ and warns the client.
 
 **Region and currency.** QF3 asks where the client prefers to invest his equities (Switzerland, Europe, World,
 USA): at least 50% of his equities are in that region (looking through the funds), the rest stays worldwide.
-Bonds and cash follow the currency of the portfolio: Swiss government and corporate bonds (CHF, SIX) for a
-portfolio in CHF, US bonds for a portfolio in USD. 33 products in total.
+Bonds and cash are the safe part, so they follow the currency of the portfolio: Swiss government and corporate
+bonds (CHF, SIX) for a portfolio in CHF, US bonds for a portfolio in USD, plus a government bond fund of the
+client's region (Swiss government bonds, or international bonds hedged to USD for Europe). 33 products in total.
 
-**Diversification.** At most 40% per product, except short-term government bonds (almost cash, no maximum); narrow "satellite" products
-(QQQ, IWM, EWL, EWJ, EEM, VNQ, HYG, EMB, SLV) at most 15% each. The default benchmark is SPY + AGG with the
-same equity share as the recommended portfolio.
+**Diversification.** At most 40% per product, except short-term government bonds (almost cash, no maximum);
+narrow "satellite" products (one sector or one country: QQQ, IWM, EWL, EWU, EWG, EWJ, EEM, VNQ, HYG, EMB, SLV,
+Swiss mid caps) at most 15% each. The default benchmark is the S&P 500 plus government bonds in the client's
+currency, with the same equity share as the recommended portfolio.
+
+**Honest about our fee.** When the expected return after our 0.50% fee is below the riskless rate (money needed
+within a year), the app says that a savings account is a better choice.
 
 **Why capacity does not change γ.** A γ floor from capacity *and* capacity-based limits would count the
 same information twice, and for most clients the tolerance answers would then change nothing. Here a
@@ -69,8 +74,9 @@ with an explanation rather than an alarm. Warnings are kept for material facts (
 significant commitments, money needed within a year, likely withdrawals above 25%). Every profile also gets
 one sentence with the equity/bond mix and volatility of its recommended portfolio.
 
-**Which method we recommend.** Experienced investors who enter views → Black-Litterman. Very prudent clients
-(conservative tolerance or at most 5% of loss in QE2) → minimum variance (no return forecast needed). Clients whose
+**Which method we recommend.** Clients who need the money within a year (or may withdraw more than half within 12
+months) → minimum variance: capital preservation, no return forecast needed. Experienced investors who enter views
+→ Black-Litterman. Clients whose
 risk answers contradict each other → risk parity (needs no γ), if it respects their loss limit. Everybody else →
 **market equilibrium**: mean-variance with π = r_f + δΣw_mkt (reverse optimisation), more stable than the 60-month
 historical mean, which is shown only for comparison.
@@ -111,10 +117,11 @@ src/client_profile.py   gamma from tolerance, allocation limits from capacity, p
 src/data.py             products, prices, returns and risk-free rates
 src/optimizer.py        client limits, mean-variance, LN3 costs, resampling, frontier, risk parity
 src/black_litterman.py  equilibrium returns, absolute/relative views, posterior (LN4), view checks
-src/portfolios.py       the four methods and the benchmarks
+src/portfolios.py       the methods, which one we recommend to whom, and the benchmarks
 src/backtest.py         out-of-sample backtest and performance measures
-src/stress_test.py      crisis replay
-src/planning.py         projection, savings goal, order list, management fee, client report
+src/stress_test.py      crisis replay (with an older fund when a product did not exist yet)
+src/planning.py         projection, savings goal, order list, management fee
+src/report.py           PDF report of the client
 src/app_helpers.py      small functions shared by the pages
 tests/                  profile, Black-Litterman and optimizer tests, and a test that opens every page
 ```

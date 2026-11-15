@@ -37,20 +37,23 @@ def home_row(tickers, c, extra_variables=0):
                      if ASSETS[t][1] == "Equity" else 0.0 for t in tickers] + [0.0] * extra_variables)
 
 
+def limits(tickers, c, extra_variables=0):
+    """The client's limits as a list of (row, minimum, maximum): minimum <= row @ x <= maximum."""
+    rows, inf = class_rows(tickers, extra_variables), np.inf
+    rules = [(rows["Equity"], -inf, c["max_equity"]),  # maximum in equities
+             (rows["Bond"], c["min_bonds"], inf),      # minimum in bonds
+             (rows["Other"], -inf, c["max_other"]),    # maximum in gold and commodities
+             (rows["Crypto"], -inf, c["max_crypto"])]  # maximum in crypto
+    if c.get("min_short_term", 0) > 0:  # money that may be needed soon: minimum in short-term government bonds
+        rules.append((short_term_row(tickers, extra_variables), c["min_short_term"], inf))
+    if c.get("min_home_equity", 0) > 0:  # region chosen in QF3
+        rules.append((home_row(tickers, c, extra_variables), 0, inf))
+    return rules
+
+
 def client_constraints(tickers, c, extra_variables=0):
     """LN3 'asset class constraints' written as LinearConstraint (as in the labs)."""
-    rows = class_rows(tickers, extra_variables)
-    rules = [
-        LinearConstraint(rows["Equity"], ub=c["max_equity"]),  # maximum in equities
-        LinearConstraint(rows["Bond"], lb=c["min_bonds"]),     # minimum in bonds
-        LinearConstraint(rows["Other"], ub=c["max_other"]),    # maximum in gold and commodities
-        LinearConstraint(rows["Crypto"], ub=c["max_crypto"]),  # maximum in crypto
-    ]
-    if c.get("min_short_term", 0) > 0:  # money that may be needed soon: minimum in short-term government bonds
-        rules.append(LinearConstraint(short_term_row(tickers, extra_variables), lb=c["min_short_term"]))
-    if c.get("min_home_equity", 0) > 0:  # region chosen in QF3
-        rules.append(LinearConstraint(home_row(tickers, c, extra_variables), lb=0))
-    return rules
+    return [LinearConstraint(row, lb=low, ub=high) for row, low, high in limits(tickers, c, extra_variables)]
 
 
 def weight_bounds(tickers, c):
@@ -72,28 +75,20 @@ def class_exposures(weights):
 
 def respects_limits(x, tickers, c, tolerance=1e-9):
     """True if the weights x are long-only, fully invested and inside the client's limits."""
-    weights = pd.Series(x, index=tickers)
-    exposure = class_exposures(weights)
     return bool(abs(np.sum(x) - 1) <= tolerance
-                and short_term_row(tickers) @ x >= c.get("min_short_term", 0) - tolerance
-                and (c.get("min_home_equity", 0) == 0 or home_row(tickers, c) @ x >= -tolerance)
                 and all(lo - tolerance <= w <= hi + tolerance for w, (lo, hi) in zip(x, weight_bounds(tickers, c)))
-                and exposure["Equity"] <= c["max_equity"] + tolerance
-                and exposure["Bond"] >= c["min_bonds"] - tolerance
-                and exposure["Other"] <= c["max_other"] + tolerance
-                and exposure["Crypto"] <= c["max_crypto"] + tolerance)
+                and all(low - tolerance <= row @ x <= high + tolerance for row, low, high in limits(tickers, c)))
 
 
 def feasible_portfolio(tickers, c):
     """Any portfolio that respects the limits, or None if there is none.
     Found with a linear programme written as in LN3: S x <= T, sum(x) = 1, 0 <= x <= max weight."""
-    rows = class_rows(tickers)
-    result = linprog(np.zeros(len(tickers)),
-                     A_ub=[rows["Equity"], -rows["Bond"], rows["Other"], rows["Crypto"], -short_term_row(tickers),
-                           -home_row(tickers, c)],
-                     b_ub=[c["max_equity"], -c["min_bonds"], c["max_other"], c["max_crypto"],
-                           -c.get("min_short_term", 0), 0],
-                     A_eq=[np.ones(len(tickers))], b_eq=[1.0], bounds=weight_bounds(tickers, c))
+    rules = limits(tickers, c)
+    upper = [(row, high) for row, low, high in rules if high < np.inf]
+    lower = [(-row, -low) for row, low, high in rules if low > -np.inf]  # low <= row @ x  <=>  -row @ x <= -low
+    S, T = zip(*upper + lower)
+    result = linprog(np.zeros(len(tickers)), A_ub=S, b_ub=T, A_eq=[np.ones(len(tickers))], b_eq=[1.0],
+                     bounds=weight_bounds(tickers, c))
     return result.x if result.success else None
 
 

@@ -34,15 +34,17 @@ st.markdown("""
   part of the tolerance score, and it is also a hard limit: in a bad year (5% chance, normal distribution) the
   recommended portfolio should not lose more. So its volatility must be at most |QE2| / 1.645 (5% → 3.0%,
   10% → 6.1%, 20% → 12.2%, 30% → 18.2%). If the portfolio of γ is riskier, we raise γ to the smallest value that
-  respects the limit ("targeting a volatility", lab LN1, solved by bisection). Clients who tolerate at most 10%
+  respects the limit ("targeting a volatility", solved by bisection). Clients who tolerate at most 10%
   always get short-term government bonds, the safe product. If even the safest portfolio inside the limits is
   too risky, we recommend that safest portfolio and say so.
-- **Region (QF3) and currency.** Equities follow the region the client prefers (Switzerland: SMI + world fund
-  ACWI; Europe: VGK + ACWI; USA: S&P 500, small caps + EFA; World: S&P 500 + EFA), and **at least 50% of the
-  equities** must be in that region, looking through the funds (ACWI is about 2% Swiss). The other half stays
-  worldwide: Switzerland alone is about 20 large companies, with Nestlé, Novartis and Roche about one third of the
-  index. Bonds and cash follow the **currency of the portfolio**: in CHF we use Swiss government and corporate
-  bonds (traded in CHF on SIX), so the safe part of the portfolio has no currency risk.
+- **Region (QF3) and currency.** Equities follow the region the client prefers (Switzerland: SMI, Swiss mid caps
+  + world fund ACWI; Europe: VGK + ACWI; USA: S&P 500, small caps + EFA; World: S&P 500 + EFA), and **at least
+  50% of the equities** must be in that region, looking through the funds (ACWI is about 2% Swiss). The other half
+  stays worldwide: the SMI alone is 20 companies, and Nestlé, Novartis and Roche are about 40% of it.
+  Bonds and cash are the safe part of the portfolio, so they follow its **currency**: in CHF we use Swiss
+  government and corporate bonds (traded in CHF on SIX), so the safe part has no currency risk. A portfolio in
+  USD keeps US bonds and also gets a government bond fund of the client's region: Swiss government bonds
+  (Switzerland) or international bonds hedged to USD, about 60% European (Europe).
 - **Diversification rules.** At most 40% in one product, except the short-term government bonds (almost cash:
   no maximum). Narrow products (one sector or country: QQQ, IWM, EWL, EWU, EWG, EWJ, EEM, VNQ, HYG, EMB, SLV,
   Swiss mid caps) at most 15% each (core-satellite).
@@ -57,9 +59,9 @@ st.markdown("""
 
   | Client | Recommended method | Why |
   |---|---|---|
-  | Experienced investor who entered views (QH4) | Black-Litterman | uses his views, weighted by his confidence (LN4) |
-  | Very prudent: conservative tolerance, or at most 5% of loss (QE2) | Minimum variance | risk matters far more than return; needs no return forecast |
-  | Risk answers that contradict each other (γ two QE3 intervals away from QE3) | Risk parity (ERC) | needs neither γ nor a return forecast (LN5); only if it respects QE2 |
+  | Needs the money within a year (QD1), or may withdraw more than half within 12 months (QD2) | Minimum variance | capital preservation: over such a short time only the risk matters; needs no return forecast |
+  | Experienced investor who entered views (QH4) | Black-Litterman | uses his views, weighted by his confidence |
+  | Risk answers that contradict each other (γ two QE3 intervals away from QE3) | Risk parity (ERC) | needs neither γ nor a return forecast; only if it respects QE2 |
   | Everybody else | Market equilibrium | mean-variance with π = r_f + δΣw_mkt, the client's γ and limits |
 
   Mean-variance and resampled mean-variance with past returns are shown only to compare (they show why we do not
@@ -72,6 +74,8 @@ st.markdown("""
   capacity. If the chosen classes cannot satisfy the limits (for example no bond product but a bond minimum), we
   add the missing products and say so.
 - **Risk parity and minimum variance** do not use γ: only the covariance and the allocation limits.
+- **Honest about our fee.** If the expected return of the portfolio after our fee is below the riskless rate, the
+  portfolio page tells the client that a savings account is a better choice (typically money needed within a year).
 """)
 
 st.header("2. Data")
@@ -83,22 +87,22 @@ st.table({"Ticker": list(ASSETS), "Product": [a[0] for a in ASSETS.values()],
           "Class": [a[1] for a in ASSETS.values()]})
 
 st.header("3. Methods")
-st.subheader("Mean-variance (Markowitz, lab LN1)")
+st.subheader("Mean-variance (Markowitz 1952)")
 st.latex(r"\min_x \; \tfrac{1}{2} x^\top \Sigma x - \tfrac{1}{\gamma} x^\top \mu "
          r"\quad \text{s.t. } \textstyle\sum x_i = 1,\; 0 \le x_i \le x^+,\; \text{class constraints}")
-st.write("Same QP as in the lab, where the lab's γ is the risk tolerance = 1 / our risk aversion. We use it with "
+st.write("γ is the risk aversion of the client (from the questionnaire). We use this problem with "
          "two different forecasts μ:")
 st.write("- **Market equilibrium (our recommendation):** μ = π = r_f + δΣw_mkt, the returns that make the market "
          f"portfolio optimal (\"reverse optimisation\", δ = {DELTA}). They are far more stable than past averages, so "
          "the portfolio does not jump from one month to the next.\n"
          "- **Past returns:** μ = average of the last 60 months, the textbook version. Shown for comparison: it is "
-         "very sensitive to estimation errors (lab LN3).")
+         "very sensitive to estimation errors.")
 
-st.subheader("Resampled mean-variance (Michaud 2007, lab LN3)")
+st.subheader("Resampled mean-variance (Michaud 2007)")
 st.write("Expected returns are very uncertain, so mean-variance weights are unstable. We simulate 100 new "
          "samples of 60 months from N(μ, Σ), optimise each one and average the weights.")
 
-st.subheader("Black-Litterman (1992, lecture LN4): only for experienced investors with views")
+st.subheader("Black-Litterman (1992): only for experienced investors with views")
 st.latex(r"\pi = r_f + \delta \Sigma w_{mkt}")
 st.latex(r"\mu_{BL} = \pi + \Gamma P^\top \left(P \Gamma P^\top + \Omega\right)^{-1} (Q - P\pi),"
          r"\qquad \Gamma = \tau\Sigma")
@@ -122,19 +126,20 @@ st.subheader("Minimum variance")
 st.write("The portfolio with the lowest volatility inside the client's limits: the same QP with μ = 0. It is the left "
          "end of the efficient frontier, and the limit of mean-variance when γ becomes very large.")
 
-st.subheader("Risk parity / Equal Risk Contribution (lecture LN5)")
+st.subheader("Risk parity / Equal Risk Contribution")
 st.latex(r"RC_i = \frac{x_i (\Sigma x)_i}{x^\top \Sigma x} = \frac{1}{n}")
 st.write("Does not use expected returns at all: every asset brings the same share of risk. When the client's "
          "limits make equal shares impossible, we take the portfolio inside the limits whose risk shares are "
          "the closest to 1/n.")
 
-st.header("4. Risk measures (lab LN2)")
+st.header("4. Risk measures")
 st.write("Beta with the covariance method β = cov(R_p, R_b) / var(R_b) and tracking error = volatility of "
-         "R_p − R_b, both against the benchmark chosen by the client (by default: SPY and AGG with the same equity share as the recommended portfolio).")
+         "R_p − R_b, both against the benchmark chosen by the client (by default: the S&P 500 and "
+         "government bonds in the client's currency, with the same share of equities as the recommended portfolio).")
 
 st.header("5. Your plan")
-st.write("**Projection.** We simulate 5,000 possible futures of the portfolio, month by month (Monte Carlo, as for "
-         "the resampling of LN3). Each month the return is drawn from a normal distribution with the expected "
+st.write("**Projection.** We simulate 5,000 possible futures of the portfolio, month by month (Monte Carlo). "
+         "Each month the return is drawn from a normal distribution with the expected "
          "return of our forecast (market equilibrium, + views if any) minus our fee, and the volatility of the portfolio; "
          "then the monthly contribution is added:")
 st.latex(r"W_{t+1} = W_t\,(1 + r_{t+1}) + \text{contribution}, \qquad "
@@ -147,11 +152,11 @@ st.write("**Orders.** Amount × weight ÷ last price, rounded down to whole ETF 
          "stays in cash. **Fee.** Our management fee is 0.50% per year; it is also taken in the backtest. "
          "**Report.** A PDF with the profile, limits, portfolio, plan, orders and points to review.")
 
-st.header("6. Backtest with transaction costs (LN3)")
+st.header("6. Backtest with transaction costs")
 st.write("Out-of-sample: at each rebalancing we only use the past 60 months. Between rebalancings the weights "
          "drift with the markets. The client chooses the period, the benchmark, the rebalancing frequency, "
          "the cost and a turnover limit.")
-st.write("Cost-aware mean-variance (LN3): we start from the current weights x⁰ and add what we buy (Δx⁺) "
+st.write("Cost-aware mean-variance: we start from the current weights x⁰ and add what we buy (Δx⁺) "
          "and what we sell (Δx⁻):")
 st.latex(r"\min_{x,\Delta x^-,\Delta x^+} \; \tfrac{1}{2} x^\top \Sigma x - \tfrac{1}{\gamma}"
          r"\left(x^\top \mu - c^\top \Delta x^- - c^\top \Delta x^+\right)")
@@ -162,7 +167,10 @@ st.write("So the portfolio only trades when the gain is larger than the cost. Re
 
 st.header("7. Stress test")
 st.write("Buy and hold from the market peak of 2008, 2020 and 2022, compared with the largest temporary loss "
-         "the client said (QE2) he could tolerate without abandoning the strategy.")
+         "the client said (QE2) he could tolerate without abandoning the strategy. A fund that did not exist yet "
+         "at the start of a crisis is replaced by an older fund on the same market (the Swiss equity fund EWL for "
+         "the SMI and SMIM funds, the S&P 500 for the world fund, US aggregate bonds for the hedged international "
+         "bonds); a fund without such a replacement is counted as cash, and the page says how much.")
 
 st.header("8. Limitations")
 st.markdown("""
@@ -170,6 +178,11 @@ st.markdown("""
 - 60 months is a short window; a longer one is more stable but reacts slower.
 - We do not hedge the currency risk of equities; the CHF risk-free rate is an approximation (SNB policy rate).
 - The regional weights of the funds are approximate, rounded index weights, not live data.
+- Yahoo Finance does not always adjust the prices of the Swiss bond funds for their coupon payments: their
+  measured volatility is a little too high and their past return a little too low.
+- One fund cannot be more than 40% of the portfolio, so a client with only two equity funds holds at most 80% in
+  equities (about 94% for a client who prefers Europe), even if his profile allows 100%.
+- After our fee, a portfolio of short-term bonds earns less than a savings account: the app says so.
 - The market weights of the equilibrium returns are our own round numbers, not measured market capitalisations.
 - The current month is not finished: it is used as if it was a full month.
 - We do not shrink the covariance matrix (Ledoit-Wolf): with about 10 products and 60 months, the estimation

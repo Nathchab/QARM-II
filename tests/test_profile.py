@@ -164,6 +164,18 @@ class RegionAndCurrencyTests(unittest.TestCase):
         self.assertIn("AGG", world_usd.recommended_assets)
         self.assertEqual(world_usd.recommended_constraints["min_home_equity"], 0)
 
+    def test_a_portfolio_in_usd_also_gets_a_bond_fund_of_the_region(self):
+        self.assertIn("BNDX", ClientProfile(dict(BASE, QF3="b"), "USD").recommended_assets)       # Europe
+        self.assertIn("CSBGC7.SW", ClientProfile(dict(BASE, QF3="a"), "USD").recommended_assets)  # Switzerland
+        self.assertIn("AGG", ClientProfile(dict(BASE, QF3="b"), "USD").recommended_assets)        # US bonds stay
+        self.assertNotIn("BNDX", ClientProfile(dict(BASE, QF3="b"), "CHF").recommended_assets)    # in CHF: Swiss bonds
+        self.assertNotIn("BNDX", profile().recommended_assets)                                    # World: no change
+
+    def test_money_needed_within_a_year_means_capital_preservation(self):
+        self.assertTrue(profile(QD1="a").preserve_capital)
+        self.assertTrue(profile(QD2="a").preserve_capital)
+        self.assertFalse(profile(QD1="b", QD2="b").preserve_capital)
+
     def test_cash_is_in_the_currency_of_the_portfolio(self):
         self.assertIn("CSBGC3.SW", ClientProfile(dict(BASE, QF1=["a", "b"], QD1="b"), "CHF").recommended_assets)
         self.assertIn("SHY", ClientProfile(dict(BASE, QF1=["a", "b"], QD1="b"), "USD").recommended_assets)

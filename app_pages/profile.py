@@ -2,7 +2,8 @@
 import pandas as pd
 import streamlit as st
 
-from src.app_helpers import get_currency, next_button, recommendation_summary, refresh_profile, show_profile_messages
+from src.app_helpers import (get_currency, next_button, recommendation_summary, refresh_profile, reset_choices,
+                             show_profile_messages)
 from src.client_profile import GAMMA_MAX, GAMMA_MIN, ClientProfile, gamma_from_rt, qe3_gamma_interval
 from src.data import ASSETS, available_assets
 from src.questionnaire import (CAPACITY, CRYPTO_CAP, CRYPTO_CHOICE, EXPERIENCE, HOME_BIAS, HORIZON, QE3_PROFILES,
@@ -52,7 +53,8 @@ if CRYPTO_CHOICE in answers["QF1"]:
 text, opts = REGION_QUESTION
 answers["QF3"] = ask("QF3", text, opts)
 st.caption(f"Your region gets at least {HOME_BIAS:.0%} of your equities; the rest stays worldwide, because one region "
-           "alone is less diversified. Bonds and cash are always in the currency of your portfolio (menu on the left).")
+           "alone is less diversified. Bonds and cash are mainly in the currency of your portfolio (menu on the left), "
+           "because they are its safe part.")
 
 st.header("5. Your experience")
 for code, (text, opts) in EXPERIENCE.items():
@@ -70,9 +72,7 @@ if submitted:
         st.error("Please answer every question (missing: " + ", ".join(missing) + ").")
     else:
         st.session_state["profile"] = ClientProfile(answers, get_currency())
-        # new profile -> we start again from our recommended products, constraints and method
-        for key in ["assets", "constraints", "method"] + [k for k in st.session_state if k.startswith("pick_")]:
-            st.session_state.pop(key, None)
+        reset_choices()  # new profile -> we start again from our recommended products, limits and method
 
 # ---------- Show profile (stays visible for the next pages) ----------
 if "profile" in st.session_state:
@@ -89,7 +89,7 @@ if "profile" in st.session_state:
                      + (". Lowered to Limited because of low savings or heavy commitments." if profile.safeguard else "."))
     col4.metric("Maximum in equities", f"{c['max_equity']:.0%}")
     tickers = [t for t in profile.recommended_assets if t in available_assets()]
-    summary = recommendation_summary(profile, get_currency(), tickers, c)
+    summary = recommendation_summary(profile, tickers, c)
     if summary:
         st.success(summary)
     show_profile_messages(profile, notes=True)

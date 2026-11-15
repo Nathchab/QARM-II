@@ -2,6 +2,7 @@
 Stress test: what would have happened to the client's portfolio during past crises?
 We buy the portfolio on the first day of the crisis and hold it (no rebalancing).
 """
+import pandas as pd
 
 # name: (start = market peak, end = market bottom, short story)
 CRISES = {
@@ -14,10 +15,22 @@ CRISES = {
 }
 
 
+# A product that did not exist yet at the start of a crisis is replaced by an older fund on the same market
+PROXIES = {"CSSMI.SW": "EWL", "CSSMIM.SW": "EWL", "ACWI": "SPY", "BNDX": "AGG"}
+
+
+def too_young(prices, weights, start):
+    """Products of the portfolio that did not exist at `start`: {product: its proxy, or None = kept as cash}."""
+    first = prices.loc[start:].iloc[0]
+    return {t: PROXIES.get(t) for t, w in weights.items() if w > 0.005 and pd.isna(first[t])}
+
+
 def replay(prices, weights, start, end=None):
     """Value over time of 1 unit invested at `start` (buy and hold)."""
-    p = prices.loc[start:end, weights.index]
-    growth = (p / p.iloc[0]).fillna(1)  # an asset that did not exist yet is kept as cash
+    p = prices.loc[start:end]
+    young = too_young(p, weights, start)
+    p = pd.DataFrame({t: p[young[t]] if young.get(t) else p[t] for t in weights.index})
+    growth = (p / p.iloc[0]).fillna(1)  # a product without a proxy is kept as cash
     return growth @ weights
 
 

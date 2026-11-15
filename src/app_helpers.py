@@ -3,11 +3,10 @@ Small helpers shared by the pages of the app (with Streamlit cache, so pages loa
 """
 import streamlit as st
 
-from src.client_profile import ClientProfile
-
 from src.black_litterman import posterior_returns, restrict_views
+from src.client_profile import ClientProfile
 from src.data import SHORT_TERM, available_assets, load_prices, monthly_returns, risk_free
-from src.optimizer import check_constraints, class_exposures
+from src.optimizer import check_constraints, class_exposures, portfolio_stats
 from src.portfolios import (BENCHMARKS, LABELS, bad_year_loss, benchmark_weights, build_portfolios, estimate,
                             gamma_for_loss_limit, recommended_method)
 
@@ -33,13 +32,18 @@ def get_profile():
     return refresh_profile()
 
 
+def reset_choices():
+    """Forget the products, limits and method chosen by the client: back to our recommendation."""
+    for key in ["assets", "constraints", "method"] + [k for k in st.session_state if k.startswith("pick_")]:
+        st.session_state.pop(key, None)
+
+
 def refresh_profile():
     """The client's profile, recomputed if he changed the currency (bonds and cash depend on it)."""
     profile = st.session_state["profile"]
     if profile.currency != get_currency():
         profile = st.session_state["profile"] = ClientProfile(profile.answers, get_currency())
-        for key in ["assets", "constraints", "method"] + [k for k in st.session_state if k.startswith("pick_")]:
-            st.session_state.pop(key, None)
+        reset_choices()
     return profile
 
 
@@ -93,14 +97,15 @@ def method_label(method):
     return LABELS.get(method, method)
 
 
+def advice(profile, tickers, c, views=None):
+    """get_portfolios for this client, with his own views by default."""
+    return get_portfolios(get_currency(), tuple(tickers), profile.gamma, profile.max_loss, c,
+                          get_views() if views is None else views)
+
+
 def recommended(profile, tickers, c, views=None):
     """The method we recommend to this client (rules in recommended_method)."""
-    views = get_views() if views is None else views
-    currency = get_currency()
-    portfolios, errors, gamma = get_portfolios(currency, tuple(tickers), profile.gamma, profile.max_loss, c, views)
-    returns, rf, prices = get_data(currency)
-    mu, cov = estimate(returns[list(tickers)])
-    forecast = posterior_returns(cov, rf.iloc[-1] * 12, restrict_views(views, mu.index))
+    portfolios, errors, gamma, forecast, cov = advice(profile, tickers, c, views)
     return recommended_method(profile, portfolios, forecast, cov)
 
 
@@ -124,18 +129,13 @@ def highlight_lines(fig, yours, benchmark):
     return fig
 
 
-def recommended_equity_share(profile, tickers, c):
-    """Share of equities in the recommended portfolio (used by the default benchmark)."""
-    views = get_views()
-    portfolios, errors, gamma = get_portfolios(get_currency(), tuple(tickers), profile.gamma, profile.max_loss, c, views)
-    best = recommended(profile, tickers, c)
-    return class_exposures(portfolios[best])["Equity"] if best in portfolios else c["max_equity"]
-
-
 def get_benchmark(profile, tickers, c):
-    """Name and weights of the benchmark chosen on the backtest page (same equity share by default)."""
+    """Name and weights of the benchmark chosen on the backtest page. By default: the S&P 500 and bonds in the
+    client's currency, with the same share of equities as his recommended portfolio."""
     name = st.session_state.get("benchmark", BENCHMARKS[0])
-    return name, benchmark_weights(name, tickers, recommended_equity_share(profile, tickers, c))
+    portfolios, best = advice(profile, tickers, c)[0], recommended(profile, tickers, c)
+    equity_share = class_exposures(portfolios[best])["Equity"] if best in portfolios else c["max_equity"]
+    return name, benchmark_weights(name, tickers, equity_share, get_currency())
 
 
 @st.cache_data
@@ -147,24 +147,24 @@ def get_data(currency):
 
 @st.cache_data(max_entries=100)  # keep at most 100 results in memory (the website runs all the time)
 def get_portfolios(currency, tickers, gamma, max_loss, c, views):
-    """Today's portfolios for this client: (weights by method, errors by method, risk aversion used).
+    """Today's advice: (weights by method, errors by method, risk aversion used, forecast, covariance matrix).
+    forecast = the market equilibrium returns (+ the client's views), the same for every method.
     The risk aversion is the client's gamma, raised if needed to respect his loss limit (QE2)."""
     returns, rf, prices = get_data(currency)
     mu, cov = estimate(returns[list(tickers)])
     rf_now = rf.iloc[-1] * 12
+    forecast = posterior_returns(cov, rf_now, restrict_views(views, mu.index))
     try:
-        gamma = gamma_for_loss_limit(posterior_returns(cov, rf_now, restrict_views(views, mu.index)), cov, gamma, c,
-                                     max_loss)
+        gamma = gamma_for_loss_limit(forecast, cov, gamma, c, max_loss)
     except (ValueError, RuntimeError):
         pass  # the optimisation fails: build_portfolios below reports the error
     portfolios, errors = build_portfolios(mu, cov, rf_now, gamma, c, views)
-    return portfolios, errors, gamma
+    return portfolios, errors, gamma, forecast, cov
 
 
 def get_valid_portfolios(profile, tickers, c):
     """(portfolios that could be calculated, risk aversion used); stop the page if none could."""
-    portfolios, errors, gamma = get_portfolios(get_currency(), tuple(tickers), profile.gamma, profile.max_loss, c,
-                                               get_views())
+    portfolios, errors, gamma, forecast, cov = advice(profile, tickers, c)
     for method, error in errors.items():
         st.warning(f"{method_label(method)} could not be calculated with these inputs ({error}).")
     if not portfolios:
@@ -173,25 +173,22 @@ def get_valid_portfolios(profile, tickers, c):
     return portfolios, gamma
 
 
-def recommendation_summary(profile, currency, tickers, c):
+def recommendation_summary(profile, tickers, c):
     """One sentence: what our recommendation gives for this client's gamma and limits (the client has not
     entered views yet). None if it cannot be calculated."""
     try:
-        portfolios, errors, gamma = get_portfolios(currency, tuple(tickers), profile.gamma, profile.max_loss, c, ())
-        returns, rf, prices = get_data(currency)
-        mu, cov = estimate(returns[list(tickers)])
-        best = recommended(profile, tickers, c, views=())
+        portfolios, errors, gamma, forecast, cov = advice(profile, tickers, c, views=())
+        best = recommended_method(profile, portfolios, forecast, cov)
         w = portfolios[best]
     except Exception:  # missing data or failed optimisation: no sentence (the pages show their own messages)
         return None
     exposure = class_exposures(w)
-    vol = float((w @ cov @ w) ** 0.5)
-    loss = bad_year_loss(w, posterior_returns(cov, rf.iloc[-1] * 12, ()), cov)
-    note = loss_limit_note(profile, gamma, loss, currency, best)
+    loss = bad_year_loss(w, forecast, cov)
+    note = loss_limit_note(profile, gamma, loss, get_currency(), best)
     return (f"Our recommended portfolio for you ({LABELS[best]}) has about {exposure['Equity']:.0%} in equities, "
             f"{exposure['Bond']:.0%} in bonds and {exposure['Other'] + exposure['Crypto']:.0%} in other assets, "
-            f"with an estimated volatility of {vol:.1%} per year and a loss of about {-loss:.1%} in a bad year "
-            "(5% chance)." + (" " + note if note else ""))
+            f"with an estimated volatility of {portfolio_stats(w, forecast, cov)[1]:.1%} per year and a loss of "
+            f"about {-loss:.1%} in a bad year (5% chance)." + (" " + note if note else ""))
 
 
 def loss_limit_note(profile, gamma, loss, currency, method):
@@ -208,5 +205,5 @@ def loss_limit_note(profile, gamma, loss, currency, method):
     if gamma > profile.gamma + 1e-6 and method != "Minimum variance":  # minimum variance does not use gamma
         return (f"Your answers give γ = {profile.gamma:.2f}, but with it the portfolio could lose more than "
                 f"{-profile.max_loss:.0%} in a bad year. We use γ = {gamma:.2f}: the closest risk aversion that "
-                "respects the loss you can tolerate (as 'targeting a volatility' in lab LN1).")
+                "respects the loss you can tolerate.")
     return None

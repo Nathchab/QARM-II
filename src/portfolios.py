@@ -3,10 +3,11 @@ The portfolios we offer to the client, and the benchmarks.
 Used by the app pages and by the backtest.
 
 Which method we recommend depends on the client (recommended_method):
+  - clients who need the money within a year, or may withdraw more than half of it within 12 months ->
+    Minimum variance: over such a short time the expected return hardly matters, only the risk does, and it
+    needs no forecast of returns (no estimation error on mu);
   - experienced investors who entered their own views (QH4) -> Black-Litterman: it moves the equilibrium
     returns towards their views (LN4);
-  - very prudent clients (conservative tolerance, or at most 5% of loss in QE2) -> Minimum variance: they care
-    about risk much more than about return, and it needs no forecast of returns (no estimation error on mu);
   - clients whose risk answers contradict each other (QE3 far from the other answers) -> Risk parity (ERC, LN5):
     we cannot measure their gamma reliably, and risk parity does not need gamma (nor expected returns).
     Only if it respects their loss limit (QE2), otherwise Market equilibrium;
@@ -33,7 +34,10 @@ LABELS = {"Equilibrium": "Market equilibrium (mean-variance)", "Minimum variance
 # that with a probability of 5%. The client's answer to QE2 is the largest loss he can tolerate.
 BAD_YEAR = 1.645
 
-BENCHMARKS = (["Same equity share as your portfolio (SPY + AGG)", "60/40 (60% SPY, 40% AGG)",
+# Default benchmark: the simplest portfolio with the same share of equities as ours, that the client could buy
+# himself: the S&P 500 and government bonds in his currency
+BENCHMARK_BOND = {"USD": "AGG", "CHF": "CSBGC7.SW"}
+BENCHMARKS = (["Same equity share as your portfolio (S&P 500 + bonds in your currency)", "60/40 (60% SPY, 40% AGG)",
                "Equal weights (1/N) of your products",
                "Market portfolio of your products"]
               + [f"100% {t} ({name})" for t, (name, _) in ASSETS.items()])
@@ -88,8 +92,9 @@ def gamma_for_loss_limit(forecast, cov, gamma, c, max_loss):
 WHY = {
     "Equilibrium": "Mean-variance (Markowitz) with the returns the market as a whole expects: the highest expected "
                    "return for the risk you accept (your γ), inside your limits.",
-    "Minimum variance": "You are very prudent (conservative tolerance or at most 5% of loss in QE2): we choose the "
-                        "portfolio with the lowest risk inside your limits. It needs no forecast of returns.",
+    "Minimum variance": "You may need this money within a year: the goal is to keep your capital, not to make it "
+                        "grow. We choose the portfolio with the lowest risk inside your limits; it needs no "
+                        "forecast of returns.",
     "Risk parity (ERC)": "Your risk answers contradict each other, so we cannot measure your γ reliably. Risk parity "
                          "needs neither γ nor a forecast: every product brings the same share of the risk.",
     "Black-Litterman": "You entered your own market views: Black-Litterman mixes them with the market equilibrium, "
@@ -99,10 +104,10 @@ WHY = {
 
 def recommended_method(profile, portfolios, forecast, cov):
     """The method we recommend to this client (rules at the top of this file)."""
+    if profile.preserve_capital:  # safety first, even for a client with views
+        return "Minimum variance"
     if "Black-Litterman" in portfolios:  # built only when the client entered views
         return "Black-Litterman"
-    if profile.very_prudent:
-        return "Minimum variance"
     erc = portfolios.get("Risk parity (ERC)")
     if profile.inconsistent and erc is not None and (
             profile.max_loss is None or bad_year_loss(erc, forecast, cov) >= profile.max_loss - 1e-4):
@@ -121,10 +126,10 @@ def dominated_by(portfolios, forecast, cov, method):
     return better
 
 
-def benchmark_weights(name, tickers, equity_share):
+def benchmark_weights(name, tickers, equity_share, currency):
     """Weights of the benchmark chosen by the client. equity_share: equities in the recommended portfolio."""
-    if name.startswith("Same equity share"):  # the simplest portfolio with the same stock/bond split as ours
-        return pd.Series({"SPY": equity_share, "AGG": 1 - equity_share})
+    if name.startswith("Same equity share"):
+        return pd.Series({"SPY": equity_share, BENCHMARK_BOND[currency]: 1 - equity_share})
     if name.startswith("60/40"):
         return pd.Series({"SPY": 0.6, "AGG": 0.4})
     if name.startswith("Equal"):

@@ -46,9 +46,9 @@ QE3_PROFILES = {"a": (0.05, 0.05), "b": (0.08, 0.10), "c": (0.12, 0.20), "d": (0
 # QE2 as a number, for the stress test (None = the client accepts more than 30%)
 QE2_MAX_LOSS = {"a": -0.05, "b": -0.10, "c": -0.20, "d": -0.30, "e": None}
 
-# ---------- D. Horizon and liquidity: (text, (max equity, min bonds, min in short-term Treasuries)) ----------
-# Money that may be needed soon must be in short-term Treasuries (SHY), not in long bonds: a 20-year bond can
-# lose a lot when rates rise (TLT lost about 30% in 2022). The SHY minimum is the share the client may need.
+# ---------- D. Horizon and liquidity: (text, (max equity, min bonds, min in short-term government bonds)) --------
+# Money that may be needed soon must be in short-term government bonds, not in long bonds: a 20-year bond can
+# lose a lot when rates rise (TLT lost about 30% in 2022). The minimum is the share the client may need.
 HORIZON = {
     "QD1": ("When do you expect to need a substantial part of this capital?", options(
         ("Within 1 year", (0.2, 0.6, 0.6)),
@@ -94,16 +94,21 @@ REGION_QUESTION = ("Where would you like to invest your equities?", options(
     ("Mostly in Switzerland", "Switzerland"), ("Mostly in Europe", "Europe"), ("Worldwide, no preference", "World"),
     ("Mostly in the USA", "USA")))
 HOME_BIAS = 0.5
-EQUITIES_BY_REGION = {"Switzerland": ["CSSMI.SW", "ACWI"], "Europe": ["VGK", "ACWI"], "World": ["SPY", "EFA"],
-                      "USA": ["SPY", "IWM", "EFA"]}
-# Bonds and cash in the currency of the portfolio: for a portfolio in CHF, Swiss bonds replace the US bonds
+EQUITIES_BY_REGION = {"Switzerland": ["CSSMI.SW", "CSSMIM.SW", "ACWI"], "Europe": ["VGK", "ACWI"],
+                      "World": ["SPY", "EFA"], "USA": ["SPY", "IWM", "EFA"]}
+# Bonds and cash are the safe part of the portfolio, so they are in its currency: for a portfolio in CHF, Swiss
+# bonds replace the US bonds. A portfolio in USD also gets a government bond fund of the client's region:
+# Swiss government bonds, or international bonds hedged to USD (about 60% European).
 IN_CHF = {"AGG": "CSBGC7.SW", "TLT": "CSBGC0.SW", "LQD": "CHCORP.SW", "SHY": "CSBGC3.SW"}
+REGION_BONDS = {"Switzerland": ["CSBGC7.SW"], "Europe": ["BNDX"]}
 
 
 def products_for(choice, region, currency):
     """Products of an asset class chosen in QF1: equities follow the region (QF3), bonds the currency."""
-    products = EQUITIES_BY_REGION[region] if choice == "a" else UNIVERSE[1][choice][1]
-    return [IN_CHF.get(t, t) for t in products] if currency == "CHF" else list(products)
+    products = EQUITIES_BY_REGION[region] if choice == "a" else list(UNIVERSE[1][choice][1])
+    if currency == "CHF":
+        return list(dict.fromkeys(IN_CHF.get(t, t) for t in products))
+    return products + (REGION_BONDS.get(region, []) if choice == "b" else [])
 
 # ---------- B/C. Experience and knowledge: (text, counts as experienced) ----------
 EXPERIENCE = {

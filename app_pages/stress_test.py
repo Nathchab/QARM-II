@@ -6,7 +6,7 @@ import streamlit as st
 from src.app_helpers import (client_method, explain, get_benchmark, get_choices, get_currency, get_data, get_profile,
                              get_valid_portfolios, highlight_lines, method_label, next_button)
 from src.portfolios import METHODS
-from src.stress_test import CRISES, crisis_summary, replay
+from src.stress_test import CRISES, crisis_summary, replay, too_young
 
 profile = get_profile()
 tickers, c = get_choices()
@@ -51,7 +51,7 @@ explain(profile, "What your money would have become if you had invested at the w
 
 # ---------- Worst loss and recovery ----------
 loss, months = crisis_summary(prices, portfolios[method], start, end)
-bench_loss, bench_months = crisis_summary(prices, benchmark, start, end)
+bench_loss = crisis_summary(prices, benchmark, start, end)[0]
 st.subheader(yours)
 col1, col2, col3 = st.columns(3)
 col1.metric("Worst loss", f"{loss:.1%}", f"{loss - bench_loss:+.1%} vs benchmark ({bench_loss:.1%})")
@@ -67,9 +67,17 @@ elif loss < profile.max_loss:
 else:
     st.success(f"This portfolio lost {-loss:.1%}, within the {-profile.max_loss:.0%} you told us (QE2) you could tolerate.")
 
-missing = [t for t in portfolios[method].index if prices[t].loc[:start].isna().all()]
-if missing:
-    st.caption(f"{', '.join(missing)} did not exist yet: this part of the portfolio is kept as cash.")
+# Products that did not exist yet: an older fund on the same market replaces them, otherwise they are kept as cash
+young = too_young(prices, portfolios[method], start)
+replaced = [f"{t} by {proxy}" for t, proxy in young.items() if proxy]
+cash = sum(portfolios[method][t] for t, proxy in young.items() if not proxy)
+if replaced:
+    st.caption("Did not exist yet, replaced by an older fund on the same market: " + ", ".join(replaced) + ".")
+if cash > 0.25:
+    st.warning(f"{cash:.0%} of this portfolio did not exist yet at the start of this crisis and is counted as cash: "
+               "the real loss would have been different. Look at a more recent crisis.")
+elif cash > 0:
+    st.caption(f"{cash:.0%} of this portfolio did not exist yet and is counted as cash.")
 
 # ---------- All crises, all portfolios ----------
 st.subheader("All crises at a glance")

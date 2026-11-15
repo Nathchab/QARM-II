@@ -41,6 +41,18 @@ class OrderListTests(unittest.TestCase):
         self.assertGreaterEqual(cash, 0)
 
 
+class StressTestTests(unittest.TestCase):
+    def test_a_young_product_is_replaced_by_an_older_fund_or_kept_as_cash(self):
+        from src.stress_test import replay, too_young
+        days = pd.date_range("2007-10-09", periods=4)
+        prices = pd.DataFrame({"ACWI": [np.nan, np.nan, 50., 55.], "SPY": [100., 90., 80., 88.],
+                               "CHCORP.SW": [np.nan, np.nan, np.nan, 100.]}, index=days)
+        weights = pd.Series({"ACWI": .5, "CHCORP.SW": .5})
+        self.assertEqual(too_young(prices, weights, days[0]), {"ACWI": "SPY", "CHCORP.SW": None})
+        value = replay(prices, weights, days[0])
+        np.testing.assert_allclose(value, [1, .95, .9, .94])  # ACWI follows SPY, CHCORP.SW stays in cash
+
+
 class ReportTests(unittest.TestCase):
     def test_the_report_is_a_pdf(self):
         from src.client_profile import ClientProfile

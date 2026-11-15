@@ -8,6 +8,7 @@ from fpdf import FPDF
 from src.data import ASSETS
 from src.optimizer import region_exposures
 from src.planning import MANAGEMENT_FEE
+from src.portfolios import BAD_YEAR
 
 NAVY, ORANGE, GREY, LIGHT = (24, 44, 84), (228, 87, 46), (110, 110, 110), (242, 244, 248)
 CLASS_COLORS = {"Equity": (31, 119, 180), "Bond": (44, 160, 44), "Other": (255, 127, 14), "Crypto": (148, 103, 189)}
@@ -117,14 +118,17 @@ def client_report(profile, c, method, weights, exp_return, vol, currency, plan, 
         ("Risk tolerance", f"{profile.rt:.0f}/100 - {profile.label} (risk aversion gamma = {profile.gamma:.2f})"),
         ("Financial capacity", f"{profile.capacity_label} ({profile.capacity_score}/9)"),
         ("Largest loss you accept (QE2)", "more than 30%" if profile.max_loss is None else f"{-profile.max_loss:.0%}"),
-        ("Your limits", f"equities max {c['max_equity']:.0%}, bonds min {c['min_bonds']:.0%}, short-term Treasuries "
-                        f"min {c.get('min_short_term', 0):.0%}, gold and commodities max {c['max_other']:.0%}, "
-                        f"crypto max {c['max_crypto']:.0%}, max {c['max_weight_per_asset']:.0%} per product"),
+        ("Your limits", f"equities max {c['max_equity']:.0%}, bonds min {c['min_bonds']:.0%}, short-term government "
+                        f"bonds min {c.get('min_short_term', 0):.0%}, gold and commodities max {c['max_other']:.0%}, "
+                        f"crypto max {c['max_crypto']:.0%}, max {c['max_weight_per_asset']:.0%} per product"
+                        + (f", at least {c['min_home_equity']:.0%} of your equities in {c['region']}"
+                           if c.get("min_home_equity", 0) > 0 else "")),
     ])
 
     pdf.section(f"2. Your portfolio: {method}")
     pdf.boxes([("Expected return per year", f"{exp_return:.1%}"), ("Volatility per year", f"{vol:.1%}"),
-               ("Loss in a bad year (5%)", f"{exp_return - 1.645 * vol:.1%}"), ("Our fee per year", f"{MANAGEMENT_FEE:.2%}")])
+               ("Loss in a bad year (5%)", f"{exp_return - BAD_YEAR * vol:.1%}"),
+               ("Our fee per year", f"{MANAGEMENT_FEE:.2%}")])
     held = weights[weights >= 0.0005].sort_values(ascending=False)
     for ticker, w in held.items():  # one horizontal bar per product, coloured by asset class
         y = pdf.get_y()
