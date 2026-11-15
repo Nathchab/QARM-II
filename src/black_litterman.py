@@ -14,18 +14,13 @@ A view is a tuple (asset, other, q, confidence):
     relative: ("EEM", "SPY", 0.03, 0.8)  -> P row: +1 on EEM, -1 on SPY,  Q = 3%
 """
 import numpy as np
-import pandas as pd
 
-# Weight of each product in the "market portfolio", in %. These are OUR OWN round numbers: stocks and
-# bonds dominate, as in Doeswijk, Lam & Swinkels (2014), but we did not copy their figures (they have
-# about 36% in equities, and no gold or crypto). ETFs that overlap (QQQ is inside SPY, everything is inside
-# ACWI) are a simplification.
-# We only use the products chosen by the client and rescale them to 100%.
-MARKET_WEIGHTS = {"SPY": 25, "QQQ": 5, "IWM": 2, "ACWI": 40, "EFA": 10, "VGK": 4, "EZU": 3, "EWU": 1.5, "EWG": 1,
-                  "CSSMI.SW": 1, "CSSMIM.SW": 0.3, "EWL": 1, "EWJ": 2, "EEM": 5, "VNQ": 3,
-                  "AGG": 18, "SHY": 3, "TLT": 4, "TIP": 2, "LQD": 5, "HYG": 1, "EMB": 1, "BNDX": 10, "BWX": 3,
-                  "CSBGC3.SW": 1, "CSBGC7.SW": 1.5, "CSBGC0.SW": 1, "CHCORP.SW": 1,
-                  "GLD": 3, "SLV": 0.5, "DBC": 2, "BTC-USD": 1, "ETH-USD": 0.5}
+# The market portfolio: what all investors hold together. These are OUR OWN round numbers: stocks and bonds
+# dominate, as in Doeswijk, Lam & Swinkels (2014), but we did not copy their figures. About 48% equities
+# (S&P 500, developed markets ex-US, emerging markets, real estate), 45% bonds and 7% gold and commodities.
+# The same market portfolio is used for every client, so the equilibrium return of a product does not depend
+# on the other products he chose.
+MARKET_PORTFOLIO = {"SPY": .28, "EFA": .12, "EEM": .05, "VNQ": .03, "AGG": .45, "GLD": .04, "DBC": .03}
 DELTA = 2.5  # risk aversion of the average investor (He & Litterman 1999)
 TAU = 0.05   # uncertainty of the prior: Gamma = tau * Sigma in LN4 (small: the prior is quite reliable)
 
@@ -33,17 +28,17 @@ TAU = 0.05   # uncertainty of the prior: Gamma = tau * Sigma in LN4 (small: the 
 #   Low: 4x the prior uncertainty, Medium: same as the prior, High: 1/4, Very high: about 1/19
 CONFIDENCE_LEVELS = {"Low": 0.2, "Medium": 0.5, "High": 0.8, "Very high / research-backed": 0.95}
 MAX_VIEWS = 5
-EXTREME_VIEW = 2.0  # warn when a view is more than 2 standard deviations away from the equilibrium
+EXTREME_VIEW = 2.0  # warn when a view is more than 2 standard deviations away from the equilibrium, where the
+#                     standard deviation is the uncertainty of the equilibrium return itself: sqrt(tau * P Sigma P')
 
 
-def market_weights(tickers):
-    w = pd.Series({t: MARKET_WEIGHTS[t] for t in tickers})
-    return w / w.sum()
-
-
-def prior_returns(cov, rf):
-    """Equilibrium returns: pi = rf + delta * Cov * w_market."""
-    return rf + DELTA * cov @ market_weights(cov.index)
+def prior_returns(market_cov, rf):
+    """Equilibrium returns (reverse optimisation): the returns that make the market portfolio optimal for the
+    average investor (risk aversion delta): pi_i = rf + delta * cov(r_i, r_market).
+    market_cov = covariance of each product with the market portfolio. For the products of the market portfolio
+    this is the usual formula pi = rf + delta * Sigma * w_market; for the other products it is the same idea
+    (CAPM: a product earns more only if it moves with the market)."""
+    return rf + DELTA * market_cov
 
 
 def restrict_views(views, tickers):
@@ -81,17 +76,18 @@ def view_row(view, tickers):
 
 
 def view_check(cov, pi, view):
-    """Equilibrium value of the view (P pi), its volatility sqrt(P Sigma P') and the gap in standard deviations."""
+    """Does the view contradict the market equilibrium? In Black-Litterman the equilibrium value of the view is
+    P pi, known with an uncertainty of sqrt(tau * P Sigma P') (tau = 0.05: as precise as an average over 20 years).
+    gap = distance between the view and the equilibrium, in these standard deviations."""
     row = view_row(view, list(cov.index))
     equilibrium = float(row @ pi.values)
-    sd = float(np.sqrt(row @ cov.values @ row))
+    sd = float(np.sqrt(TAU * row @ cov.values @ row))
     gap = (view[2] - equilibrium) / sd if sd > 0 else 0.0
-    return {"equilibrium": equilibrium, "volatility": sd, "gap": gap, "extreme": abs(gap) > EXTREME_VIEW}
+    return {"equilibrium": equilibrium, "uncertainty": sd, "gap": gap, "extreme": abs(gap) > EXTREME_VIEW}
 
 
-def posterior_returns(cov, rf, views):
-    """Black-Litterman expected returns: the equilibrium returns corrected by the client's (valid) views."""
-    pi = prior_returns(cov, rf)
+def posterior_returns(pi, cov, views):
+    """Black-Litterman expected returns: the equilibrium returns pi corrected by the client's (valid) views."""
     if not views:
         return pi  # no view: we keep the market equilibrium
 

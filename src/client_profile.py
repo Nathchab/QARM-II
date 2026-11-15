@@ -18,7 +18,6 @@ Result: a tolerant client with a low capacity gets the most dynamic portfolio *i
 limits that his situation allows. The limits are a "box", gamma chooses the point in the box.
 """
 from src.data import ASSETS, SHORT_TERM
-from src.optimizer import check_constraints
 from src.questionnaire import (CRYPTO_CAP, CRYPTO_CHOICE, HOME_BIAS, HORIZON, QE2_MAX_LOSS, QE3_PROFILES,
                                REGION_QUESTION, VIEWS_QUESTION, capacity_score, is_experienced, missing_answers,
                                products_for, risk_tolerance_score, rt_label)
@@ -27,12 +26,14 @@ GAMMA_MAX = 12.0  # gamma at RT = 0 (very risk averse)
 GAMMA_MIN = 1.0   # gamma at RT = 100 (very risk tolerant)
 
 MAX_WEIGHT_PER_ASSET = 0.40
-# Capacity tiers: highest score of the tier -> (name, max equity, min bonds, max gold/commodities, max crypto)
+# Capacity tiers: highest score of the tier -> (name, max equity, min bonds, max gold/commodities, max crypto,
+# largest loss the client can afford in a bad year). The loss is needed because "minimum in bonds" alone does not
+# limit the risk: the optimiser can choose 20-year bonds, which are as risky as equities.
 CAPACITY_TIERS = {
-    2: ("Low", 0.30, 0.50, 0.10, 0.00),
-    4: ("Limited", 0.50, 0.30, 0.15, 0.00),
-    6: ("Moderate", 0.70, 0.15, 0.20, 0.05),
-    9: ("High", 1.00, 0.00, 0.20, 0.10),
+    2: ("Low", 0.30, 0.50, 0.10, 0.00, -0.10),
+    4: ("Limited", 0.50, 0.30, 0.15, 0.00, -0.15),
+    6: ("Moderate", 0.70, 0.15, 0.20, 0.05, -0.20),
+    9: ("High", 1.00, 0.00, 0.20, 0.10, None),
 }
 
 
@@ -91,7 +92,7 @@ class ClientProfile:
         self.rt = risk_tolerance_score(a)
         self.gamma = gamma_from_rt(self.rt)
         self.label = rt_label(self.rt)
-        self.max_loss = QE2_MAX_LOSS[a["QE2"]]  # used by the stress test and the loss limit
+        self.qe2_loss = QE2_MAX_LOSS[a["QE2"]]  # the loss he says he can tolerate (None = more than 30%)
         # Money needed within a year, or more than half may be withdrawn within 12 months: the goal is to keep the
         # capital, not to make it grow -> we recommend the minimum variance portfolio
         self.preserve_capital = a["QD1"] == "a" or a["QD2"] == "a"
@@ -104,8 +105,15 @@ class ClientProfile:
 
         # Risk capacity -> allocation limits: the most restrictive of capacity, horizon and withdrawals
         self.capacity_score = capacity_score(a)
-        (self.capacity_label, cap_equity, cap_bonds, max_other, cap_crypto), self.safeguard = \
+        (self.capacity_label, cap_equity, cap_bonds, max_other, cap_crypto, cap_loss), self.safeguard = \
             capacity_tier(self.capacity_score, a)
+        # Loss limit of the portfolio in a bad year: what he can tolerate (QE2) or what he can afford (capacity),
+        # the stricter of the two. loss_reason completes the sentence "... the 10% <loss_reason>".
+        losses = {"you can tolerate (QE2)": self.qe2_loss,
+                  f"your financial capacity ({self.capacity_label}) allows": cap_loss}
+        losses = {reason: loss for reason, loss in losses.items() if loss is not None}
+        self.loss_reason = max(losses, key=losses.get) if losses else None
+        self.max_loss = losses.get(self.loss_reason)
         sources = {  # name of the source -> (maximum in equities, minimum in bonds, minimum in short-term)
             f"financial capacity ({self.capacity_label})": (cap_equity, cap_bonds, 0.0),
             "your horizon (QD1)": HORIZON["QD1"][1][a["QD1"]][1],
@@ -118,11 +126,10 @@ class ClientProfile:
         if a["QD1"] not in ("d", "e") or a["QD2"] not in ("d", "e"):
             cap_crypto = 0.0  # no crypto for money needed within 5 years or likely to be withdrawn
         max_crypto = min(cap_crypto, CRYPTO_CAP[1][a["QF2"]][1]) if wants_crypto else 0.0
-        c = self.recommended_constraints = {"max_equity": max_equity, "min_bonds": min_bonds,
-                                            "min_short_term": min_short_term, "max_other": max_other,
-                                            "max_crypto": max_crypto, "max_weight_per_asset": MAX_WEIGHT_PER_ASSET,
-                                            "min_home_equity": 0.0 if self.region == "World" else HOME_BIAS,
-                                            "region": self.region}
+        self.recommended_constraints = {
+            "max_equity": max_equity, "min_bonds": min_bonds, "min_short_term": min_short_term,
+            "max_other": max_other, "max_crypto": max_crypto, "max_weight_per_asset": MAX_WEIGHT_PER_ASSET,
+            "min_home_equity": 0.0 if self.region == "World" else HOME_BIAS, "region": self.region}
         self.limit_sources = {  # which answer sets each limit (shown on the profile page)
             "max_equity": [name for name, v in sources.items() if v[0] == max_equity],
             "min_bonds": [name for name, v in sources.items() if v[1] == min_bonds] if min_bonds > 0 else [],
@@ -131,24 +138,19 @@ class ClientProfile:
         self.crypto_blocked = wants_crypto and cap_crypto == 0
 
         # Recommended products: the asset classes chosen in QF1 (equities of the QF3 region, bonds in the currency
-        # of the portfolio), plus "fillers" if the limits need them
+        # of the portfolio), plus the short-term government bonds (our "cash": without it the optimiser cannot
+        # lower the risk to the level of a prudent client). With it, the limits can always be respected.
         tickers = list(dict.fromkeys(t for choice in a["QF1"] for t in products_for(choice, self.region, currency)))
         if max_crypto == 0:
             tickers = [t for t in tickers if ASSETS[t][1] != "Crypto"]
         self.added_assets = []
         short = SHORT_TERM[currency]
-        prudent = self.max_loss is not None and self.max_loss >= -0.10  # QE2: at most 5% or 10% of loss
-        if (min_short_term > 0 or prudent) and short not in tickers:  # money needed soon or prudent client
+        if short not in tickers:
             tickers.append(short)
             self.added_assets.append(short)
-        fillers = (products_for("b", self.region, currency)[:1] + [short]
-                   + products_for("a", self.region, currency) + ["GLD"])
-        for filler in fillers:
-            if not check_constraints(tickers, c):
-                break
-            if filler not in tickers:
-                tickers.append(filler)
-                self.added_assets.append(filler)
+        if len(tickers) < 2:  # only cash was chosen: a portfolio needs two products, we add a government bond fund
+            tickers.append(products_for("b", self.region, currency)[0])
+            self.added_assets.append(tickers[-1])
         self.recommended_assets = tickers
 
         # Messages: warnings = material financial facts, notes = neutral explanations
@@ -184,7 +186,7 @@ class ClientProfile:
             self.notes.append("You selected crypto, but your financial capacity or your horizon does not allow it: "
                               "crypto is set to 0%.")
         if self.added_assets:
-            self.notes.append("To respect your limits we added: " + ", ".join(
+            self.notes.append("To respect your limits and to adjust the risk to your profile we added: " + ", ".join(
                 f"{t} ({ASSETS[t][0]})" for t in self.added_assets) + ".")
         if self.inconsistent:  # only clear contradictions
             low, high = qe3_gamma_interval(a["QE3"])

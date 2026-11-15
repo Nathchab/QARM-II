@@ -85,7 +85,8 @@ class LossLimitNoteTests(unittest.TestCase):
                       loss_limit_note(prudent, prudent.gamma * 2, -0.05, "USD", "Equilibrium"))
         self.assertIsNone(loss_limit_note(prudent, prudent.gamma * 2, -0.05, "USD", "Minimum variance"))  # no gamma
         self.assertIn("CSBGC3.SW", loss_limit_note(prudent, 1000.0, -0.09, "CHF", "Minimum variance"))
-        self.assertIsNone(loss_limit_note(ClientProfile(ANSWERS), 3.0, -0.40, "USD", "Equilibrium"))  # no limit
+        rich = dict(ANSWERS, age="a", income="c", savings="c", commitments="a")  # high capacity, accepts > 30%
+        self.assertIsNone(loss_limit_note(ClientProfile(rich), 3.0, -0.40, "USD", "Equilibrium"))  # no limit
 
 
 if __name__ == "__main__":

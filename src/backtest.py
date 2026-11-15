@@ -17,10 +17,10 @@ Transaction costs, as in lecture LN3:
 import numpy as np
 import pandas as pd
 
-from src.black_litterman import posterior_returns, prior_returns, restrict_views
+from src.black_litterman import MARKET_PORTFOLIO, posterior_returns, prior_returns, restrict_views
 from src.optimizer import mean_variance_with_costs
 from src.planning import MANAGEMENT_FEE
-from src.portfolios import WINDOW, build_portfolios, gamma_for_loss_limit
+from src.portfolios import WINDOW, build_portfolios, gamma_for_loss_limit, inputs
 
 N_SIM = 20  # fewer resampling simulations than on the portfolio page, so the backtest stays fast
 
@@ -40,7 +40,7 @@ def run_backtest(returns, rf, tickers, benchmark, gamma, c, views, start, end,
     benchmark: weights of the benchmark. start, end: dates of the backtest.
     Returns (monthly net returns of each strategy, weights at each rebalancing, turnover at each rebalancing).
     """
-    returns = returns[sorted(set(tickers) | set(benchmark.index))].dropna()
+    returns = returns[sorted(set(tickers) | set(benchmark.index) | set(MARKET_PORTFOLIO))].dropna()
     rf = rf.reindex(returns.index).ffill()
     dates = [t for t in range(WINDOW, len(returns)) if start <= returns.index[t] <= end]
 
@@ -52,11 +52,11 @@ def run_backtest(returns, rf, tickers, benchmark, gamma, c, views, start, end,
         traded = {}
 
         if i % rebalance == 0:  # ---------- rebalancing ----------
-            past = returns[tickers].iloc[t - WINDOW:t]
-            mu, cov, rf_now = past.mean() * 12, past.cov() * 12, rf.iloc[t - 1] * 12
-            bl_mu = posterior_returns(cov, rf_now, restrict_views(views, tickers))
+            mu, cov, market_cov = inputs(returns.iloc[t - WINDOW:t], tickers)
+            pi = prior_returns(market_cov, rf.iloc[t - 1] * 12)
+            bl_mu = posterior_returns(pi, cov, restrict_views(views, tickers))
             g = gamma_for_loss_limit(bl_mu, cov, gamma, c, max_loss)  # same loss limit as on the portfolio page
-            targets, errors = build_portfolios(mu, cov, rf_now, g, c, views, N_SIM)
+            targets, errors = build_portfolios(mu, cov, pi, g, c, views, N_SIM)
             if errors:  # a method failed on this date: we stop and show its message
                 raise RuntimeError(list(errors.values())[0])
             targets["Benchmark"] = benchmark
@@ -66,7 +66,7 @@ def run_backtest(returns, rf, tickers, benchmark, gamma, c, views, start, end,
             else:
                 limit = max_turnover
                 cost_in_optimisation = cost if cost_aware else 0.0
-                forecasts = {"Equilibrium": prior_returns(cov, rf_now), "Minimum variance": 0 * mu, "Mean-variance": mu,
+                forecasts = {"Equilibrium": pi, "Minimum variance": 0 * mu, "Mean-variance": mu,
                              "Black-Litterman": bl_mu}  # minimum variance = mean-variance with mu = 0
                 new = {}
                 for name in targets:

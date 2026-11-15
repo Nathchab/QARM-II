@@ -117,7 +117,8 @@ def client_report(profile, c, method, weights, exp_return, vol, currency, plan, 
     pdf.key_values([
         ("Risk tolerance", f"{profile.rt:.0f}/100 - {profile.label} (risk aversion gamma = {profile.gamma:.2f})"),
         ("Financial capacity", f"{profile.capacity_label} ({profile.capacity_score}/9)"),
-        ("Largest loss you accept (QE2)", "more than 30%" if profile.max_loss is None else f"{-profile.max_loss:.0%}"),
+        ("Loss limit in a bad year", "none" if profile.max_loss is None
+         else f"{-profile.max_loss:.0%}, the loss {profile.loss_reason}"),
         ("Your limits", f"equities max {c['max_equity']:.0%}, bonds min {c['min_bonds']:.0%}, short-term government "
                         f"bonds min {c.get('min_short_term', 0):.0%}, gold and commodities max {c['max_other']:.0%}, "
                         f"crypto max {c['max_crypto']:.0%}, max {c['max_weight_per_asset']:.0%} per product"

@@ -47,11 +47,13 @@ maximum and bond minimum; the most restrictive source applies. Low savings or he
 at Limited. Money that may be needed soon (QD1 within 3 years, QD2 withdrawals of 10% or more) must be in
 short-term government bonds (SHY in USD, Swiss government bonds 0-3 years in CHF), not in long bonds: minimum 60%/40% (QD1 a/b) and 50%/25%/10% (QD2 a/b/c).
 
-**Loss limit (QE2).** In a bad year (5% chance) the recommended portfolio should not lose more than the loss the
-client can tolerate (QE2): volatility ≤ |QE2| / 1.645. If the portfolio of γ is riskier, γ is raised to the smallest
-value that respects the limit ("targeting a volatility", lab LN1). Clients who tolerate at most 10% always get
-short-term government bonds. If even the safest portfolio is too risky, the app recommends the safest portfolio
-and warns the client.
+**Loss limit.** In a bad year (5% chance) the recommended portfolio should not lose more than the loss the client
+can tolerate (QE2) or afford (financial capacity: Low 10%, Limited 15%, Moderate 20%), whichever is stricter:
+volatility ≤ |limit| / 1.645. If the portfolio of γ is riskier, γ is raised to the smallest value that respects
+the limit ("targeting a volatility", lab LN1). The capacity limit is needed because "minimum in bonds" does not
+limit the risk when the optimiser picks 20-year bonds. Every client gets short-term government bonds (the "cash"
+of the portfolio), so the risk can always be lowered. If even the safest portfolio is too risky, the app
+recommends the safest portfolio and warns the client.
 
 **Region and currency.** QF3 asks where the client prefers to invest his equities (Switzerland, Europe, World,
 USA): at least 50% of his equities are in that region (looking through the funds), the rest stays worldwide.
@@ -67,8 +69,8 @@ currency, with the same equity share as the recommended portfolio.
 **Honest about our fee.** When the expected return after our 0.50% fee is below the riskless rate (money needed
 within a year), the app says that a savings account is a better choice.
 
-**Why capacity does not change γ.** A γ floor from capacity *and* capacity-based limits would count the
-same information twice, and for most clients the tolerance answers would then change nothing. Here a
+**Why capacity does not set γ.** γ comes from the tolerance answers only: a γ floor from capacity for everybody
+would make the tolerance answers irrelevant for most clients. Capacity draws the box (limits and largest loss). A
 tolerant client with low capacity gets the most dynamic portfolio inside the limits his situation allows,
 with an explanation rather than an alarm. Warnings are kept for material facts (savings below 3 months,
 significant commitments, money needed within a year, likely withdrawals above 25%). Every profile also gets
@@ -78,7 +80,8 @@ one sentence with the equity/bond mix and volatility of its recommended portfoli
 months) → minimum variance: capital preservation, no return forecast needed. Experienced investors who enter views
 → Black-Litterman. Clients whose
 risk answers contradict each other → risk parity (needs no γ), if it respects their loss limit. Everybody else →
-**market equilibrium**: mean-variance with π = r_f + δΣw_mkt (reverse optimisation), more stable than the 60-month
+**market equilibrium**: mean-variance with πᵢ = r_f + δ·cov(rᵢ, r_market) (reverse optimisation with one market
+portfolio for every client: 48% equities, 45% bonds, 7% gold and commodities), more stable than the 60-month
 historical mean, which is shown only for comparison.
 **Black-Litterman is not the default:** it is offered only to experienced investors with views, and becomes their
 recommendation once they enter at least one valid view. **One forecast for every method:** the expected returns
@@ -88,7 +91,8 @@ dominates it (the page checks it). Only experienced investors (at least
 2 years of investing, intermediate knowledge, and the correct answer to the diversification question QC3) who
 say they have convictions (QH4) can enter views: up to 5, absolute (“GLD will return 6%”) or relative (“EEM will
 beat SPY by 3%”), each with a confidence from QH6. The uncertainty is `Ω_kk = τ (PΣPᵀ)_kk (1 − c)/c`, and a view
-more than two standard deviations away from the equilibrium triggers a warning. The code uses the formula of
+more than two standard deviations √(τ·PΣPᵀ) away from the equilibrium (the uncertainty of the equilibrium return
+itself) triggers a warning. The code uses the formula of
 lecture LN4: `μ_BL = π + ΓPᵀ(PΓPᵀ + Ω)⁻¹(Q − Pπ)` with `Γ = τΣ`.
 
 ## Run the app on your computer
@@ -128,9 +132,9 @@ tests/                  profile, Black-Litterman and optimizer tests, and a test
 
 ## Data
 
-19 ETFs covering equities, bonds, gold and commodities, plus Bitcoin and Ethereum. Yahoo Finance supplies
+31 ETFs covering equities, bonds, gold and commodities, plus Bitcoin and Ethereum. Yahoo Finance supplies
 adjusted prices, the USD/CHF rate (`CHF=X`) and the 13-week US T-bill yield (`^IRX`). The CHF risk-free rate
-uses yearly approximations of the SNB policy rate. The market weights used for the equilibrium returns are our own
+uses yearly approximations of the SNB policy rate. The weights of the market portfolio used for the equilibrium returns are our own
 round numbers (stocks and bonds dominate, as in Doeswijk, Lam & Swinkels 2014), not measured market values.
 
 ## Limitations

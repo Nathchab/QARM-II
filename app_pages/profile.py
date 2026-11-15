@@ -101,9 +101,10 @@ if "profile" in st.session_state:
     st.table(pd.DataFrame({
         "Limit": ["Maximum in equities", "Minimum in bonds", "Minimum in short-term government bonds",
                   "Maximum in gold and commodities", "Maximum in crypto", "Maximum per product",
-                  f"Minimum share of your equities in {profile.region}"],
+                  f"Minimum share of your equities in {profile.region}", "Largest loss in a bad year (5% chance)"],
         "Value": [f"{c[k]:.0%}" for k in ("max_equity", "min_bonds", "min_short_term", "max_other", "max_crypto",
-                                          "max_weight_per_asset", "min_home_equity")],
+                                          "max_weight_per_asset", "min_home_equity")]
+        + ["no limit" if profile.max_loss is None else f"{-profile.max_loss:.0%}"],
         "Set by": [", ".join(profile.limit_sources["max_equity"]),
                    ", ".join(profile.limit_sources["min_bonds"]) or "no minimum",
                    ", ".join(profile.limit_sources["min_short_term"]) or "no money needed soon",
@@ -112,7 +113,9 @@ if "profile" in st.session_state:
                    else "your horizon or financial capacity" if profile.crypto_blocked
                    else "your choice (QF2) and financial capacity",
                    "diversification rule (short-term bonds: no maximum, narrow products: 15%)",
-                   "your region (QF3)" if profile.region != "World" else "no regional preference"],
+                   "your region (QF3)" if profile.region != "World" else "no regional preference",
+                   "you accept more than 30% and your capacity is high" if profile.max_loss is None
+                   else "the loss " + profile.loss_reason],
     }))
     st.write("Recommended products: " + ", ".join(f"{t} ({ASSETS[t][0]})" for t in profile.recommended_assets))
 

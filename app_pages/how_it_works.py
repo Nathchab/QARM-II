@@ -1,7 +1,7 @@
 """Page 7: short explanation of the methods, data and limitations (useful for questions)."""
 import streamlit as st
 
-from src.black_litterman import CONFIDENCE_LEVELS, DELTA, TAU
+from src.black_litterman import CONFIDENCE_LEVELS, DELTA, MARKET_PORTFOLIO, TAU
 from src.client_profile import GAMMA_MAX, GAMMA_MIN
 from src.data import ASSETS
 
@@ -21,8 +21,9 @@ st.markdown("""
   and γ evaluated at the RT score of each answer falls inside the interval this answer reveals.
 - **Risk capacity → allocation limits.** Age, income stability, emergency savings and commitments give a
   score from 0 to 9 (Low 0–2, Limited 3–4, Moderate 5–6, High 7–9). Low savings or heavy commitments cap the
-  capacity at Limited. Each tier gives a maximum in equities, a minimum in bonds, and maximums in gold/commodities
-  and crypto. The horizon (QD1) and the possible withdrawals (QD2) give their own equity maximum and bond minimum.
+  capacity at Limited. Each tier gives a maximum in equities, a minimum in bonds, maximums in gold/commodities
+  and crypto, and the largest loss the client can afford in a bad year (Low 10%, Limited 15%, Moderate 20%,
+  High: no limit). The horizon (QD1) and the possible withdrawals (QD2) give their own equity maximum and bond minimum.
   **The most restrictive source applies.** The client can tighten these limits, never relax them.
 - **Money needed soon goes into short-term government bonds** (SHY in USD, Swiss government bonds 0-3 years
   CSBGC3.SW in CHF). A mean-variance optimiser looks at one period
@@ -30,13 +31,17 @@ st.markdown("""
   rise (about 30% in 2022). So money that may be needed within 3 years (QD1) or withdrawn within 12 months (QD2)
   must be in short-term bonds: at least 60%/40% for QD1 "within 1 year"/"1–3 years" and 50%/25%/10% for QD2
   ">50%"/"25–50%"/"10–25%".
-- **Your loss limit (QE2) is respected.** QE2 asks for the largest temporary loss the client can tolerate. It is
-  part of the tolerance score, and it is also a hard limit: in a bad year (5% chance, normal distribution) the
-  recommended portfolio should not lose more. So its volatility must be at most |QE2| / 1.645 (5% → 3.0%,
-  10% → 6.1%, 20% → 12.2%, 30% → 18.2%). If the portfolio of γ is riskier, we raise γ to the smallest value that
-  respects the limit ("targeting a volatility", solved by bisection). Clients who tolerate at most 10%
-  always get short-term government bonds, the safe product. If even the safest portfolio inside the limits is
-  too risky, we recommend that safest portfolio and say so.
+- **Your loss limit is respected.** Two answers give a largest loss: the loss the client says he can tolerate
+  (QE2) and the loss he can afford (his financial capacity). The stricter of the two is a hard limit: in a bad
+  year (5% chance, normal distribution) the recommended portfolio should not lose more. So its volatility must be
+  at most |limit| / 1.645 (5% → 3.0%, 10% → 6.1%, 15% → 9.1%, 20% → 12.2%, 30% → 18.2%). If the portfolio of γ
+  is riskier, we raise γ to the smallest value that respects the limit ("targeting a volatility", solved by
+  bisection). The capacity limit is needed because a minimum in bonds does not limit the risk by itself: without
+  it, a bold client with a low capacity got 40% in 20-year bonds and a volatility of 12.6%, almost as much as a
+  client with a high capacity. If even the safest portfolio inside the limits is too risky, we recommend that
+  safest portfolio and say so. Over the past 15 years, the 12-month loss of the most prudent portfolios was
+  larger than their 5% limit about 5% of the time (2022, when equities and bonds fell together): it is a limit
+  with a 95% confidence, not a guarantee.
 - **Region (QF3) and currency.** Equities follow the region the client prefers (Switzerland: SMI, Swiss mid caps
   + world fund ACWI; Europe: VGK + ACWI; USA: S&P 500, small caps + EFA; World: S&P 500 + EFA), and **at least
   50% of the equities** must be in that region, looking through the funds (ACWI is about 2% Swiss). The other half
@@ -49,9 +54,9 @@ st.markdown("""
   no maximum). Narrow products (one sector or country: QQQ, IWM, EWL, EWU, EWG, EWJ, EEM, VNQ, HYG, EMB, SLV,
   Swiss mid caps) at most 15% each (core-satellite).
   Without this rule the most tolerant clients got 35% in real estate and 21% in emerging markets.
-- **Why capacity does not change γ.** If capacity also raised γ, it would be counted twice (limits *and* a γ
-  floor), and for most clients the risk tolerance would no longer change anything. Here a tolerant client with
-  a low capacity gets the most dynamic portfolio *inside* the limits his situation allows.
+- **Why capacity does not set γ.** γ comes from the tolerance answers only. If capacity also gave a γ floor for
+  everybody, most clients' tolerance would no longer change anything. Capacity only draws the box (allocation
+  limits and largest loss): a tolerant client with a low capacity gets the most dynamic portfolio *inside* it.
 - **Warnings** are kept for material facts only: emergency savings below 3 months, significant commitments,
   money needed within a year, or likely withdrawals above 25%. Inconsistent tolerance answers are only
   flagged when the final γ is at least two QE3 intervals away from the QE3 answer.
@@ -62,7 +67,7 @@ st.markdown("""
   | Needs the money within a year (QD1), or may withdraw more than half within 12 months (QD2) | Minimum variance | capital preservation: over such a short time only the risk matters; needs no return forecast |
   | Experienced investor who entered views (QH4) | Black-Litterman | uses his views, weighted by his confidence |
   | Risk answers that contradict each other (γ two QE3 intervals away from QE3) | Risk parity (ERC) | needs neither γ nor a return forecast; only if it respects QE2 |
-  | Everybody else | Market equilibrium | mean-variance with π = r_f + δΣw_mkt, the client's γ and limits |
+  | Everybody else | Market equilibrium | mean-variance with the equilibrium returns π, the client's γ and limits |
 
   Mean-variance and resampled mean-variance with past returns are shown only to compare (they show why we do not
   trust past averages).
@@ -71,8 +76,9 @@ st.markdown("""
   is the optimal one for γ and the limits, so it is efficient: no other method has a higher expected return with
   a lower risk (the portfolio page checks it). The average of the last 60 months is shown only as information.
 - **Products.** The asset classes chosen in QF1 give the recommended products; crypto (QF2) is also capped by
-  capacity. If the chosen classes cannot satisfy the limits (for example no bond product but a bond minimum), we
-  add the missing products and say so.
+  capacity. Every client also gets the short-term government bonds, even if he did not choose them: they are the
+  "cash" of the portfolio, and without them the optimiser cannot lower the risk to the level of a prudent
+  client (a client with only equity funds would hold at least 60% in equities whatever his γ).
 - **Risk parity and minimum variance** do not use γ: only the covariance and the allocation limits.
 - **Honest about our fee.** If the expected return of the portfolio after our fee is below the riskless rate, the
   portfolio page tells the client that a savings account is a better choice (typically money needed within a year).
@@ -92,9 +98,14 @@ st.latex(r"\min_x \; \tfrac{1}{2} x^\top \Sigma x - \tfrac{1}{\gamma} x^\top \mu
          r"\quad \text{s.t. } \textstyle\sum x_i = 1,\; 0 \le x_i \le x^+,\; \text{class constraints}")
 st.write("γ is the risk aversion of the client (from the questionnaire). We use this problem with "
          "two different forecasts μ:")
-st.write("- **Market equilibrium (our recommendation):** μ = π = r_f + δΣw_mkt, the returns that make the market "
-         f"portfolio optimal (\"reverse optimisation\", δ = {DELTA}). They are far more stable than past averages, so "
-         "the portfolio does not jump from one month to the next.\n"
+st.write("- **Market equilibrium (our recommendation):** μ = π with πᵢ = r_f + δ·cov(rᵢ, r_market), the returns "
+         f"that make the market portfolio optimal for the average investor (\"reverse optimisation\", δ = {DELTA}). "
+         "For the market portfolio itself this is π = r_f + δΣw_market; a product earns more only if it moves with "
+         "the market (CAPM). The market portfolio is the same for every client ("
+         + ", ".join(f"{w:.0%} {t}" for t, w in MARKET_PORTFOLIO.items()) + "), so the expected return of a product "
+         "does not depend on the other products he chose, and the same answers give about the same risk in USD and "
+         "in CHF. These returns are far more stable than past averages, so the portfolio does not jump from one "
+         "month to the next.\n"
          "- **Past returns:** μ = average of the last 60 months, the textbook version. Shown for comparison: it is "
          "very sensitive to estimation errors.")
 
@@ -103,7 +114,7 @@ st.write("Expected returns are very uncertain, so mean-variance weights are unst
          "samples of 60 months from N(μ, Σ), optimise each one and average the weights.")
 
 st.subheader("Black-Litterman (1992): only for experienced investors with views")
-st.latex(r"\pi = r_f + \delta \Sigma w_{mkt}")
+st.latex(r"\pi_i = r_f + \delta\,\mathrm{cov}(r_i, r_{market})")
 st.latex(r"\mu_{BL} = \pi + \Gamma P^\top \left(P \Gamma P^\top + \Omega\right)^{-1} (Q - P\pi),"
          r"\qquad \Gamma = \tau\Sigma")
 st.write(f"π: equilibrium returns of the market portfolio (δ = {DELTA}, τ = {TAU}). Black-Litterman starts from "
@@ -119,7 +130,8 @@ st.write("with c the confidence of question QH6 ("
          + ", ".join(f"{k} = {v:.0%}" for k, v in CONFIDENCE_LEVELS.items())
          + "). For an absolute view (PΣPᵀ)ₖₖ = σᵢ²; for a relative view it is the variance of the spread, "
          "σᵢ² + σⱼ² − 2σᵢⱼ. Medium gives the view the same uncertainty as the equilibrium. A view more than two "
-         "standard deviations √(PΣPᵀ) away from the equilibrium value Pπ triggers a warning. Then we run "
+         "standard deviations √(τ·PΣPᵀ) away from the equilibrium value Pπ triggers a warning (this is the "
+         "uncertainty of the equilibrium return itself: with τ = 0.05, as precise as an average over 20 years). Then we run "
          "mean-variance with μ_BL.")
 
 st.subheader("Minimum variance")
@@ -183,7 +195,7 @@ st.markdown("""
 - One fund cannot be more than 40% of the portfolio, so a client with only two equity funds holds at most 80% in
   equities (about 94% for a client who prefers Europe), even if his profile allows 100%.
 - After our fee, a portfolio of short-term bonds earns less than a savings account: the app says so.
-- The market weights of the equilibrium returns are our own round numbers, not measured market capitalisations.
+- The weights of the market portfolio are our own round numbers, not measured market capitalisations.
 - The current month is not finished: it is used as if it was a full month.
 - We do not shrink the covariance matrix (Ledoit-Wolf): with about 10 products and 60 months, the estimation
   error of Σ is small compared to the error on μ. With many more products, shrinkage would become useful.

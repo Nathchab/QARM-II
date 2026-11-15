@@ -58,14 +58,14 @@ col1.metric("Worst loss", f"{loss:.1%}", f"{loss - bench_loss:+.1%} vs benchmark
 col2.metric(f"Worst loss in {currency}", f"{loss * amount:,.0f}")
 col3.metric("Time to get your money back", "not yet" if months is None else f"{months} months")
 
-if profile.max_loss is None:
+if profile.qe2_loss is None:
     st.info(f"This portfolio lost {-loss:.1%}. You told us (QE2) you could tolerate a temporary loss of more than 30%.")
-elif loss < profile.max_loss:
-    st.error(f"This portfolio lost {-loss:.1%}, more than the {-profile.max_loss:.0%} you told us (QE2) you could "
+elif loss < profile.qe2_loss:
+    st.error(f"This portfolio lost {-loss:.1%}, more than the {-profile.qe2_loss:.0%} you told us (QE2) you could "
              "tolerate without abandoning the strategy. Would you have stayed invested? Maybe choose a more "
              "prudent method or tighten your limits.")
 else:
-    st.success(f"This portfolio lost {-loss:.1%}, within the {-profile.max_loss:.0%} you told us (QE2) you could tolerate.")
+    st.success(f"This portfolio lost {-loss:.1%}, within the {-profile.qe2_loss:.0%} you told us (QE2) you could tolerate.")
 
 # Products that did not exist yet: an older fund on the same market replaces them, otherwise they are kept as cash
 young = too_young(prices, portfolios[method], start)

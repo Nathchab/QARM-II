@@ -12,14 +12,14 @@ Which method we recommend depends on the client (recommended_method):
     we cannot measure their gamma reliably, and risk parity does not need gamma (nor expected returns).
     Only if it respects their loss limit (QE2), otherwise Market equilibrium;
   - everybody else -> "Market equilibrium": mean-variance (Markowitz) with the expected returns implied by the
-    market (pi = rf + delta * Cov * w_market, "reverse optimisation"), because the average of the last 5 years is
-    a very noisy forecast (LN3).
+    market (pi_i = rf + delta * cov(r_i, r_market), "reverse optimisation"), because the average of the last
+    5 years is a very noisy forecast (LN3).
 Mean-variance and resampled MV with past returns are shown for comparison only.
 """
 import numpy as np
 import pandas as pd
 
-from src.black_litterman import market_weights, posterior_returns, prior_returns, restrict_views
+from src.black_litterman import MARKET_PORTFOLIO, posterior_returns, restrict_views
 from src.data import ASSETS
 from src.optimizer import (gamma_for_max_volatility, mean_variance, minimum_variance, portfolio_stats, resampled,
                            risk_parity)
@@ -39,25 +39,33 @@ BAD_YEAR = 1.645
 BENCHMARK_BOND = {"USD": "AGG", "CHF": "CSBGC7.SW"}
 BENCHMARKS = (["Same equity share as your portfolio (S&P 500 + bonds in your currency)", "60/40 (60% SPY, 40% AGG)",
                "Equal weights (1/N) of your products",
-               "Market portfolio of your products"]
+               "Market portfolio (48% equities, 45% bonds, 7% gold and commodities)"]
               + [f"100% {t} ({name})" for t, (name, _) in ASSETS.items()])
 
 
-def estimate(monthly_returns):
-    """Annual expected returns and covariance matrix from the last WINDOW months."""
-    past = monthly_returns.dropna().iloc[-WINDOW:]
-    return past.mean() * 12, past.cov() * 12
+def inputs(past, tickers):
+    """Inputs of the optimisers from a window of monthly returns (all annual): the average returns and the
+    covariance matrix of the client's products, and their covariance with the market portfolio."""
+    market = past[list(MARKET_PORTFOLIO)] @ pd.Series(MARKET_PORTFOLIO)
+    return past[tickers].mean() * 12, past[tickers].cov() * 12, past[tickers].apply(market.cov) * 12
 
 
-def build_portfolios(mu, cov, rf, gamma, c, views, n_sim=100):
+def estimate(monthly_returns, tickers):
+    """inputs() on the last WINDOW months for which the client's products and the market portfolio have data."""
+    columns = list(dict.fromkeys(list(tickers) + list(MARKET_PORTFOLIO)))
+    return inputs(monthly_returns[columns].dropna().iloc[-WINDOW:], list(tickers))
+
+
+def build_portfolios(mu, cov, pi, gamma, c, views, n_sim=100):
     """The methods, all with the same client constraints (Black-Litterman only if the client has views).
+    mu = past average returns, pi = market equilibrium returns.
     Returns (weights of the methods that worked, error message of the methods that failed):
     one failing method does not hide the others."""
     views = restrict_views(views, mu.index)  # ignore views on products not chosen
     methods = {
-        "Equilibrium": lambda: mean_variance(prior_returns(cov, rf), cov, gamma, c),
+        "Equilibrium": lambda: mean_variance(pi, cov, gamma, c),
         "Minimum variance": lambda: minimum_variance(cov, c),
-        "Black-Litterman": lambda: mean_variance(posterior_returns(cov, rf, views), cov, gamma, c),
+        "Black-Litterman": lambda: mean_variance(posterior_returns(pi, cov, views), cov, gamma, c),
         "Mean-variance": lambda: mean_variance(mu, cov, gamma, c),
         "Resampled MV": lambda: resampled(mu, cov, gamma, c, n_sim),
         "Risk parity (ERC)": lambda: risk_parity(cov, c),
@@ -135,5 +143,5 @@ def benchmark_weights(name, tickers, equity_share, currency):
     if name.startswith("Equal"):
         return pd.Series(1 / len(tickers), index=tickers)
     if name.startswith("Market"):
-        return market_weights(tickers)
+        return pd.Series(MARKET_PORTFOLIO)
     return pd.Series({name.split()[1]: 1.0})  # "100% SPY (...)" -> SPY

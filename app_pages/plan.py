@@ -3,19 +3,18 @@ import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
 
-from src.app_helpers import (client_method, explain, get_choices, get_currency, get_data, get_profile, get_valid_portfolios,
-                             get_views, method_label, next_button)
-from src.black_litterman import posterior_returns, restrict_views
+from src.app_helpers import (client_method, explain, get_choices, get_currency, get_data, get_profile,
+                             get_valid_portfolios, method_label, next_button)
 from src.optimizer import portfolio_stats
 from src.planning import HORIZON_YEARS, MANAGEMENT_FEE, order_list, simulate_wealth, worst_drawdowns
-from src.portfolios import METHODS, estimate
+from src.portfolios import METHODS
 from src.report import client_report
 
 profile = get_profile()
 tickers, c = get_choices()
 currency = get_currency()
 returns, rf, prices = get_data(currency)
-portfolios, gamma = get_valid_portfolios(profile, tickers, c)
+portfolios, gamma, forecast, cov = get_valid_portfolios(profile, tickers, c)
 
 st.title("4. Your plan")
 st.write("What could your portfolio become, and what do you buy today?")
@@ -35,15 +34,13 @@ goal = col2.number_input(f"Your goal ({currency})", min_value=1_000, value=200_0
 # ---------- Projection ----------
 # Expected returns: our forecast (market equilibrium, + your views if you entered some) for every method. It is the
 # most prudent estimate: we do not project the returns of the last 5 years into the future.
-mu, cov = estimate(returns[tickers])
-mu_bl = posterior_returns(cov, rf.iloc[-1] * 12, restrict_views(get_views(), mu.index))
 weights = portfolios[method]
-exp_return, vol = portfolio_stats(weights, mu_bl, cov)
+exp_return, vol = portfolio_stats(weights, forecast, cov)
 wealth, growth = simulate_wealth(exp_return - MANAGEMENT_FEE, vol, years, initial, monthly)
 
 paid_in = initial + monthly * 12 * years
 final = wealth[:, -1]
-loss_limit = -profile.max_loss if profile.max_loss is not None else 0.30  # QE2 ("more than 30%" -> 30%)
+loss_limit = -profile.qe2_loss if profile.qe2_loss is not None else 0.30  # QE2 ("more than 30%" -> 30%)
 plan = {"initial": initial, "monthly": monthly, "years": years, "paid_in": paid_in, "goal": goal,
         "p5": np.percentile(final, 5), "p50": np.percentile(final, 50), "p95": np.percentile(final, 95),
         "prob_goal": (final >= goal).mean(), "loss_limit": loss_limit,

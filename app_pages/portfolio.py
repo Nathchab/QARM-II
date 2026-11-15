@@ -6,10 +6,10 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from src.app_helpers import (explain, get_benchmark, get_choices, get_currency, get_data, get_profile,
-                             get_valid_portfolios, get_views, loss_limit_note, method_label, next_button,
+                             get_valid_portfolios, loss_limit_note, method_label, next_button,
                              show_profile_messages)
-from src.black_litterman import (CONFIDENCE_LEVELS, EXTREME_VIEW, MAX_VIEWS, market_weights, posterior_returns,
-                                  prior_returns, restrict_views, view_check, view_problems)
+from src.black_litterman import (CONFIDENCE_LEVELS, DELTA, EXTREME_VIEW, MARKET_PORTFOLIO, MAX_VIEWS,
+                                  posterior_returns, prior_returns, restrict_views, view_check, view_problems)
 from src.data import ASSETS
 from src.optimizer import (beta, class_exposures, frontier, home_row, portfolio_stats, region_exposures,
                            risk_contributions, short_term_row, tracking_error)
@@ -25,7 +25,7 @@ benchmark_name, benchmark = get_benchmark(profile, tickers, c)
 
 st.title("3. Your portfolio")
 returns, rf, prices = get_data(currency)
-mu, cov = estimate(returns[tickers])
+mu, cov, market_cov = estimate(returns, tickers)
 rf_now = rf.iloc[-1] * 12
 st.caption(f"Profile: {profile.label} (γ = {profile.gamma:.2f}) · Capacity: {profile.capacity_label} · "
            f"{len(tickers)} products · Currency: {currency} · Estimated on the last {WINDOW} months of data")
@@ -36,7 +36,7 @@ past = returns[tickers].dropna().iloc[-WINDOW:]
 benchmark_returns = returns.loc[past.index, benchmark.index].fillna(0) @ benchmark
 
 # ---------- Only for experienced investors who want it (QH4): their views, with Black-Litterman ----------
-prior = prior_returns(cov, rf_now)
+prior = prior_returns(market_cov, rf_now)  # market equilibrium returns
 if profile.wants_views:
     st.subheader("Your views on the markets (Black-Litterman)")
     st.write("You told us that you have your own views (QH4). Black-Litterman moves the market "
@@ -72,11 +72,10 @@ if profile.wants_views:
         view = (asset, other, q, CONFIDENCE_LEVELS[level])
         check = view_check(cov, prior, view)
         what = f"π_{asset}" if other is None else f"π_{asset} − π_{other}"
-        st.caption(f"Equilibrium: {what} = {check['equilibrium']:.1%} · your view is "
-                   f"{q - check['equilibrium']:+.1%} away ({check['gap']:+.1f} standard deviations of the view, "
-                   f"volatility {check['volatility']:.1%}).")
+        st.caption(f"Equilibrium: {what} = {check['equilibrium']:.1%} (known to about ±{check['uncertainty']:.1%}) · "
+                   f"your view is {q - check['equilibrium']:+.1%} away, {abs(check['gap']):.1f} times this uncertainty.")
         if check["extreme"]:
-            st.warning(f"View {k + 1} is more than {EXTREME_VIEW:g} standard deviations away from the market "
+            st.warning(f"View {k + 1} is more than {EXTREME_VIEW:g} times the uncertainty away from the market "
                        "equilibrium: are you sure? With a high confidence it will dominate the portfolio.")
         views.append(view)
     problems = view_problems(views)
@@ -85,15 +84,20 @@ if profile.wants_views:
     if problems:
         st.info("Your views are not used until these problems are fixed.")
     st.session_state["views"] = tuple(views) if not problems else ()
+    if views and not problems:  # what the views do to the expected returns, before any optimisation
+        after = posterior_returns(prior, cov, tuple(views))
+        st.dataframe(pd.DataFrame({"Market equilibrium": prior, "With your views": after, "Change": after - prior})
+                     .T.style.format("{:+.1%}", subset=pd.IndexSlice[["Change"], :])
+                     .format("{:.1%}", subset=pd.IndexSlice[["Market equilibrium", "With your views"], :]))
+        st.caption("Expected returns before and after your views. A view on one product also moves the products "
+                   "that are correlated with it.")
     st.caption("Each view is a row of P (+1 on the product, −1 on the second product of a relative view) and "
                "a value of Q. Its uncertainty is Ω = τ·(PΣPᵀ)·(1 − c)/c, with c = 20%, 50%, 80% or 95%: "
                "Medium gives the view the same uncertainty as the equilibrium.")
 
-views = restrict_views(get_views(), mu.index)
 # ONE forecast of the expected returns for every method, so that the portfolios can be compared:
 # the market equilibrium (plus the client's views). The average of the last 60 months is NOT a forecast.
-forecast = posterior_returns(cov, rf_now, views)
-portfolios, gamma = get_valid_portfolios(profile, tickers, c)
+portfolios, gamma, forecast, cov = get_valid_portfolios(profile, tickers, c)
 recommended = recommended_method(profile, portfolios, forecast, cov)
 methods = [m for m in METHODS if m in portfolios]
 saved = st.session_state.get("method") or recommended  # the client's own choice, otherwise our recommendation
@@ -120,18 +124,20 @@ if method == "Minimum variance":
              "It is what we recommend when the money may be needed within a year.")
 if method in ("Equilibrium", "Black-Litterman"):
     st.write("**Where do the expected returns come from?** Not from the last 5 years: their average is a very noisy "
-             "guess of the future. We use the **market equilibrium** π = r_f + δΣw_mkt, the returns that "
-             "make the market portfolio optimal, i.e. what the market as a whole expects for the risk of each "
-             "product. Then the mean-variance optimiser (Markowitz) chooses the best mix for your γ and your limits."
+             "guess of the future. We use the **market equilibrium** πᵢ = r_f + δ·cov(rᵢ, r_market), the returns "
+             "that make the market portfolio optimal: a product is expected to earn more only if it moves with the "
+             "market as a whole. Then the mean-variance optimiser (Markowitz) chooses the best mix for your γ and your limits."
              + (" Black-Litterman moves π towards your views." if method == "Black-Litterman" else ""))
     with st.expander("See the equilibrium returns"):
         st.dataframe(pd.DataFrame({
             "Product": [ASSETS[t][0] for t in mu.index],
-            "Market weight": market_weights(mu.index),
+            "Covariance with the market": market_cov,
             "Equilibrium return": prior,
             f"Historical return ({WINDOW} months)": mu,
-        }).style.format({"Market weight": "{:.0%}", "Equilibrium return": "{:.1%}",
+        }).style.format({"Covariance with the market": "{:.4f}", "Equilibrium return": "{:.1%}",
                          f"Historical return ({WINDOW} months)": "{:.1%}"}))
+        st.caption("Market portfolio: " + ", ".join(f"{w:.0%} {t}" for t, w in MARKET_PORTFOLIO.items())
+                   + f" (our own round numbers). δ = {DELTA}.")
 
 # ---------- Key numbers ----------
 ret, vol = portfolio_stats(weights, forecast, cov)
@@ -158,13 +164,13 @@ note = loss_limit_note(profile, gamma, rec_loss, currency, recommended)
 if profile.max_loss is not None:
     if loss >= 0:
         st.caption("Even in a bad year (5% chance) this portfolio should not lose money: within the "
-                   f"{-profile.max_loss:.0%} you can tolerate (QE2).")
+                   f"{-profile.max_loss:.0%} {profile.loss_reason}.")
     elif loss >= profile.max_loss - 1e-4:
         st.caption(f"In a bad year (5% chance) this portfolio could lose about {-loss:.1%}: within the "
-                   f"{-profile.max_loss:.0%} you can tolerate (QE2).")
+                   f"{-profile.max_loss:.0%} {profile.loss_reason}.")
     elif method != recommended and loss < rec_loss - 1e-4:
         st.warning(f"In a bad year (5% chance) this portfolio could lose about {-loss:.0%}, more than the "
-                   f"{-profile.max_loss:.0%} you can tolerate (QE2). Choose the recommended method instead.")
+                   f"{-profile.max_loss:.0%} {profile.loss_reason}. Choose the recommended method instead.")
 if note:
     (st.warning if rec_loss < profile.max_loss - 1e-4 else st.info)(note)
 col1, col2, col3, col4 = st.columns(4)

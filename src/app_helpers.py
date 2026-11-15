@@ -3,7 +3,7 @@ Small helpers shared by the pages of the app (with Streamlit cache, so pages loa
 """
 import streamlit as st
 
-from src.black_litterman import posterior_returns, restrict_views
+from src.black_litterman import posterior_returns, prior_returns, restrict_views
 from src.client_profile import ClientProfile
 from src.data import SHORT_TERM, available_assets, load_prices, monthly_returns, risk_free
 from src.optimizer import check_constraints, class_exposures, portfolio_stats
@@ -149,28 +149,29 @@ def get_data(currency):
 def get_portfolios(currency, tickers, gamma, max_loss, c, views):
     """Today's advice: (weights by method, errors by method, risk aversion used, forecast, covariance matrix).
     forecast = the market equilibrium returns (+ the client's views), the same for every method.
-    The risk aversion is the client's gamma, raised if needed to respect his loss limit (QE2)."""
+    The risk aversion is the client's gamma, raised if needed to respect his loss limit (QE2 or capacity)."""
     returns, rf, prices = get_data(currency)
-    mu, cov = estimate(returns[list(tickers)])
-    rf_now = rf.iloc[-1] * 12
-    forecast = posterior_returns(cov, rf_now, restrict_views(views, mu.index))
+    mu, cov, market_cov = estimate(returns, tickers)
+    pi = prior_returns(market_cov, rf.iloc[-1] * 12)
+    forecast = posterior_returns(pi, cov, restrict_views(views, mu.index))
     try:
         gamma = gamma_for_loss_limit(forecast, cov, gamma, c, max_loss)
     except (ValueError, RuntimeError):
         pass  # the optimisation fails: build_portfolios below reports the error
-    portfolios, errors = build_portfolios(mu, cov, rf_now, gamma, c, views)
+    portfolios, errors = build_portfolios(mu, cov, pi, gamma, c, views)
     return portfolios, errors, gamma, forecast, cov
 
 
 def get_valid_portfolios(profile, tickers, c):
-    """(portfolios that could be calculated, risk aversion used); stop the page if none could."""
+    """(portfolios that could be calculated, risk aversion used, forecast of the returns, covariance matrix);
+    stop the page if no portfolio could be calculated."""
     portfolios, errors, gamma, forecast, cov = advice(profile, tickers, c)
     for method, error in errors.items():
         st.warning(f"{method_label(method)} could not be calculated with these inputs ({error}).")
     if not portfolios:
         st.error("No portfolio could be calculated. Change your products or constraints.")
         st.stop()
-    return portfolios, gamma
+    return portfolios, gamma, forecast, cov
 
 
 def recommendation_summary(profile, tickers, c):
@@ -187,12 +188,13 @@ def recommendation_summary(profile, tickers, c):
     note = loss_limit_note(profile, gamma, loss, get_currency(), best)
     return (f"Our recommended portfolio for you ({LABELS[best]}) has about {exposure['Equity']:.0%} in equities, "
             f"{exposure['Bond']:.0%} in bonds and {exposure['Other'] + exposure['Crypto']:.0%} in other assets, "
-            f"with an estimated volatility of {portfolio_stats(w, forecast, cov)[1]:.1%} per year and a loss of "
-            f"about {-loss:.1%} in a bad year (5% chance)." + (" " + note if note else ""))
+            f"with an estimated volatility of {portfolio_stats(w, forecast, cov)[1]:.1%} per year and "
+            + (f"a loss of about {-loss:.1%} in a bad year (5% chance)." if loss < 0 else "no loss even in a bad year.")
+            + (" " + note if note else ""))
 
 
 def loss_limit_note(profile, gamma, loss, currency, method):
-    """Explains how the loss limit of QE2 was applied to the recommended portfolio (None if nothing to say).
+    """Explains how the client's loss limit was applied to the recommended portfolio (None if nothing to say).
     loss = bad-year loss of the recommended portfolio `method`."""
     if profile.max_loss is None:
         return None
@@ -200,10 +202,10 @@ def loss_limit_note(profile, gamma, loss, currency, method):
         advice = (f"Adding short-term government bonds ({SHORT_TERM[currency]}) or removing risky products "
                   "would lower the risk.")
         return (f"Even the safest portfolio within your limits could lose about {-loss:.0%} in a bad year, more "
-                f"than the {-profile.max_loss:.0%} you can tolerate (QE2): we recommend this safest portfolio "
+                f"than the {-profile.max_loss:.0%} {profile.loss_reason}: we recommend this safest portfolio "
                 f"(minimum risk). {advice}")
     if gamma > profile.gamma + 1e-6 and method != "Minimum variance":  # minimum variance does not use gamma
         return (f"Your answers give γ = {profile.gamma:.2f}, but with it the portfolio could lose more than "
-                f"{-profile.max_loss:.0%} in a bad year. We use γ = {gamma:.2f}: the closest risk aversion that "
-                "respects the loss you can tolerate.")
+                f"{-profile.max_loss:.0%} in a bad year, the loss {profile.loss_reason}. We use γ = {gamma:.2f}: "
+                "the closest risk aversion that respects this limit.")
     return None

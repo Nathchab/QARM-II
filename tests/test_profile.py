@@ -107,8 +107,13 @@ class CapacityTests(unittest.TestCase):
 
     def test_missing_products_are_added_when_limits_need_them(self):
         p = profile(QF1=["a"], QD1="c")  # only equities, but at least 20% bonds and at most 60% equities
-        self.assertIn("AGG", p.added_assets)
+        self.assertEqual(p.added_assets, ["SHY"])  # short-term government bonds count as bonds
         self.assertEqual(check_constraints(p.recommended_assets, p.recommended_constraints), [])
+        only_cash = profile(QF1=["f"])
+        self.assertEqual(only_cash.recommended_assets, ["SHY", "AGG"])  # a portfolio needs two products
+        for choice in ALL_CLASSES:  # any single asset class gives limits that can be respected
+            p = profile(QF1=[choice])
+            self.assertEqual(check_constraints(p.recommended_assets, p.recommended_constraints), [], choice)
 
     def test_money_needed_soon_goes_to_short_term_treasuries(self):
         self.assertEqual(profile().recommended_constraints["min_short_term"], 0.0)  # long-term money
@@ -119,10 +124,22 @@ class CapacityTests(unittest.TestCase):
         self.assertIn("SHY", p.added_assets)
         self.assertEqual(check_constraints(p.recommended_assets, p.recommended_constraints), [])
 
-    def test_prudent_clients_always_have_the_safe_product(self):
-        p = profile(QF1=["a", "b"], QE2="b")  # SHY not chosen, but at most 10% of loss accepted
-        self.assertIn("SHY", p.recommended_assets)
-        self.assertNotIn("SHY", profile(QF1=["a", "b"]).recommended_assets)  # 20% accepted: not added
+    def test_every_client_has_the_safe_product(self):
+        """Without it the optimiser cannot lower the risk to the level the client's gamma asks for."""
+        for answers in [dict(QF1=["a"]), dict(QF1=["a", "b"]), dict(QF1=["a", "b"], QE2="e")]:
+            self.assertIn("SHY", profile(**answers).recommended_assets)
+        self.assertNotIn("SHY", profile().added_assets)  # already chosen in QF1: not "added"
+
+    def test_loss_limit_is_the_stricter_of_tolerance_and_capacity(self):
+        low = dict(age="d", income="a", savings="b", commitments="b")    # capacity Low: can afford 10%
+        bold_low = profile(QE2="e", **low)                               # accepts more than 30%
+        self.assertEqual((bold_low.max_loss, bold_low.qe2_loss), (-.10, None))
+        self.assertIn("capacity", bold_low.loss_reason)
+        prudent_low = profile(QE2="a", **low)                            # accepts 5%: stricter than his capacity
+        self.assertEqual(prudent_low.max_loss, -.05)
+        self.assertIn("QE2", prudent_low.loss_reason)
+        self.assertIsNone(profile(QE2="e").max_loss)                     # high capacity, more than 30%: no limit
+        self.assertEqual(profile(QE2="c").max_loss, -.20)
 
     def test_missing_answer_is_rejected(self):
         answers = dict(BASE)
