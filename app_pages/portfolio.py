@@ -210,21 +210,28 @@ explain(profile, "**Weights** (left): how much of your money goes into each prod
                  "(right): how much of the ups and downs of the portfolio comes from each product. Equities often "
                  "bring most of the risk even with a smaller weight, because they move much more than bonds.")
 
-# ---------- Regions ----------
-regions = pd.Series(region_exposures(weights))
-regions = regions[regions > 0.0005]
+# ---------- Regions: the equities alone (what QF3 is about) and the whole portfolio ----------
+equities = weights[[t for t in weights.index if ASSETS[t][1] == "Equity"]]
+parts = {"Whole portfolio": region_exposures(weights)}
+if equities.sum() > 0.005:
+    parts["Your equities only"] = region_exposures(equities / equities.sum())
+regions = pd.DataFrame(parts)
+regions = regions[regions.max(axis=1) > 0.005]
 col1, col2 = st.columns(2)
 classes = {k: v for k, v in exposure.items() if v > 0.0005}
 col1.plotly_chart(px.pie(names=list(classes), values=list(classes.values()), hole=0.5, title="By asset class",
                          color=list(classes), color_discrete_map=CLASS_COLORS).update_traces(textinfo="percent+label"))
-col2.plotly_chart(px.bar(x=regions.values, y=regions.index, orientation="h", text_auto=".0%",
+col2.plotly_chart(px.bar(regions, orientation="h", barmode="group", text_auto=".0%",
                          title="Where is your money invested?").update_layout(
-    xaxis_tickformat=".0%", xaxis_title=None, yaxis_title=None, yaxis=dict(autorange="reversed")))
+    xaxis_tickformat=".0%", xaxis_title=None, yaxis_title=None, yaxis=dict(autorange="reversed"), legend_title=None))
 explain(profile, "The left chart splits your money between equities, bonds, gold/commodities and crypto. The right "
-                 "chart looks inside the funds: a world fund (ACWI) is about two thirds North America, so its weight "
-                 "is split between regions (approximate, rounded index weights). Gold, commodities and crypto belong "
-                 "to no region." + (f" You asked for {c['region']}: at least {c['min_home_equity']:.0%} of your "
-                                 "equities are there." if c.get("min_home_equity", 0) > 0 else ""))
+                 "chart looks inside the funds (approximate, rounded index weights), for your equities alone and for "
+                 "the whole portfolio. Two things to know: the United States are about two thirds of the world stock "
+                 "market, so even a worldwide equity portfolio is mostly North American; and your bonds and cash are "
+                 f"in {currency}, the safe part of the portfolio, so the whole portfolio leans towards the home of "
+                 "this currency. Gold, commodities and crypto belong to no region."
+                 + (f" You asked for {c['region']}: at least {c['min_home_equity']:.0%} of your equities are there."
+                    if c.get("min_home_equity", 0) > 0 else ""))
 
 # ---------- Is the recommended portfolio efficient? ----------
 better = dominated_by(portfolios, forecast, cov, recommended) if recommended in portfolios else []
