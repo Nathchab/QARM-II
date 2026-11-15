@@ -23,9 +23,13 @@ pages = st.navigation([
 ])
 
 # ---------- Sidebar: currency and data ----------
-st.sidebar.radio("Currency", ["USD", "CHF"], key="currency", horizontal=True,
-                 help="The bonds and the cash of your portfolio are in this currency. Prices are converted with the "
-                      "USD/CHF rate; the riskless rate in CHF is the SNB policy rate.")
+# The currency is kept in st.session_state["currency"] (not in the widget itself): Streamlit can forget the value
+# of a widget when the page changes, and the browser would then show another currency than the one we use.
+CURRENCIES = ["USD", "CHF"]
+st.session_state["currency"] = st.sidebar.radio(
+    "Currency", CURRENCIES, index=CURRENCIES.index(st.session_state.get("currency", "USD")), horizontal=True,
+    help="The bonds and the cash of your portfolio are in this currency. Prices are converted with the "
+         "USD/CHF rate; the riskless rate in CHF is the SNB policy rate.")
 try:
     last_date = download_prices().index[-1]
 except Exception:
@@ -40,9 +44,10 @@ if st.sidebar.button("🔄 Update data now"):
 
 # ---------- Sidebar: new client ----------
 if st.sidebar.button("🧹 Start over (new client)", help="Forget all the answers and choices of this session."):
-    client_number = st.session_state.get("client_number", 0) + 1
+    keep = {"client_number": st.session_state.get("client_number", 0) + 1,  # new keys for the questions: empty again
+            "currency": st.session_state["currency"]}                       # the currency is a setting of the app
     st.session_state.clear()  # forget the profile, the products, the views, the backtest settings...
-    st.session_state["client_number"] = client_number  # new keys for the questions, so they come back empty
+    st.session_state.update(keep)
     st.switch_page("app_pages/welcome.py")
 
 pages.run()

@@ -33,9 +33,12 @@ def get_profile():
 
 
 def reset_choices():
-    """Forget the products, limits and method chosen by the client: back to our recommendation."""
+    """Forget the products, limits and method chosen by the client: back to our recommendation.
+    The widgets of the products page get new keys (choices_version), otherwise the browser keeps showing
+    the old values."""
     for key in ["assets", "constraints", "method"] + [k for k in st.session_state if k.startswith("pick_")]:
         st.session_state.pop(key, None)
+    st.session_state["choices_version"] = st.session_state.get("choices_version", 0) + 1
 
 
 def refresh_profile():

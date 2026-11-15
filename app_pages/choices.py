@@ -20,6 +20,7 @@ if st.button("↩️ Back to our recommendation"):
     reset_choices()
     st.rerun()
 
+version = st.session_state.get("choices_version", 0)  # changes at every reset: the widgets start again
 saved_assets = st.session_state.get("assets", rec_assets)
 saved_c = tighten(rec_c, st.session_state.get("constraints", {}))
 
@@ -33,7 +34,7 @@ for asset_class in ["Equity", "Bond", "Other", "Crypto"]:
         st.caption("Crypto: not allowed by your profile (maximum 0%).")
         continue
     tickers += st.multiselect(asset_class, options, default=[t for t in saved_assets if t in options],
-                              format_func=label, key=f"pick_{asset_class}")
+                              format_func=label, key=f"pick_{asset_class}_{version}")
 
 added = [t for t in tickers if t not in rec_assets]
 removed = [t for t in rec_assets if t not in tickers]
@@ -53,7 +54,7 @@ def slider(column, label, key, low, high, value, step):
         column.write(f"{label}: **{low:.0%}** (set by your profile)")
         return low
     pct = column.slider(label + " (%)", int(round(low * 100)), int(round(high * 100)),
-                        int(round(value * 100)), step, key=f"pick_{key}")
+                        int(round(value * 100)), step, key=f"pick_{key}_{version}")
     return pct / 100
 
 
