@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PAGES = ["app_pages/welcome.py", "app_pages/profile.py", "app_pages/choices.py", "app_pages/portfolio.py",
          "app_pages/plan.py", "app_pages/backtest.py", "app_pages/stress_test.py", "app_pages/how_it_works.py"]
 ANSWERS = dict(QE1="e", QE2="e", QE3="d", QE4="e", QD1="e", QD2="e",
-               age="d", income="a", savings="a", commitments="c", QF1=list("abcdefgh"), QF2="b",
+               age="d", income="a", savings="a", commitments="c", QF1=list("abcdefgh"), QF2="b", QF3="c",
                QB1="c", QC1="c", QC3="a", QH4="b")
 
 
@@ -84,7 +84,7 @@ class LossLimitNoteTests(unittest.TestCase):
         self.assertIn("closest risk aversion",
                       loss_limit_note(prudent, prudent.gamma * 2, -0.05, "USD", "Equilibrium"))
         self.assertIsNone(loss_limit_note(prudent, prudent.gamma * 2, -0.05, "USD", "Minimum variance"))  # no gamma
-        self.assertIn("currency risk", loss_limit_note(prudent, 1000.0, -0.09, "CHF", "Minimum variance"))
+        self.assertIn("CSBGC3.SW", loss_limit_note(prudent, 1000.0, -0.09, "CHF", "Minimum variance"))
         self.assertIsNone(loss_limit_note(ClientProfile(ANSWERS), 3.0, -0.40, "USD", "Equilibrium"))  # no limit
 
 

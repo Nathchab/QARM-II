@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from src.app_helpers import (YOURS, client_method, get_choices, get_currency, get_data, get_profile, get_views,
+from src.app_helpers import (YOURS, client_method, explain, get_choices, get_currency, get_data, get_profile, get_views,
                              highlight_lines, method_label, next_button, recommended_equity_share)
 from src.backtest import N_SIM, performance, run_backtest
 from src.planning import MANAGEMENT_FEE
@@ -109,12 +109,18 @@ fig = highlight_lines(px.line(growth, title=f"Value of 100 {currency} invested")
 fig.update_layout(yaxis_title=currency, xaxis_title=None, legend_title=None)
 st.plotly_chart(fig)
 st.caption("Orange: your portfolio. Dashed: the benchmark. Grey: the other methods, only for comparison.")
+explain(profile, "What 100 invested at the start would have become, month by month, if we had used the robo-advisor "
+                 "at that time: at each rebalancing it only knew the past, never the future (\"out of sample\"). "
+                 "Falls in the line are losses that you would have lived through.")
 
 # ---------- Performance table ----------
 st.dataframe(table.style.format("{:.1%}").format(
     "{:.2f}", subset=pd.IndexSlice[["Sharpe ratio", "Beta vs benchmark"], :]).format(
     "{:.2%}", subset=pd.IndexSlice[["Costs paid per year"], :]).set_properties(
     subset=[yours], **{"background-color": "#fde4dc", "font-weight": "bold"}))
+explain(profile, "**Annual return**: average growth per year. **Max drawdown**: the worst fall from a previous peak "
+                 "(the worst moment to have invested). **Turnover**: how much was traded per year; more trading "
+                 "means more transaction costs.")
 
 # ---------- Transaction costs (LN3) ----------
 st.subheader("Trading and transaction costs")
@@ -124,6 +130,8 @@ fig = px.bar(turnover.iloc[1:], barmode="group", title="Turnover at each rebalan
              color_discrete_sequence=[YOURS, "#222222", "#9e9e9e", "#bdbdbd", "#d6d6d6", "#e6e6e6"])
 fig.update_layout(yaxis_tickformat=".0%", yaxis_title="Turnover", xaxis_title=None, legend_title=None)
 st.plotly_chart(fig)
+explain(profile, "Each bar is the share of the portfolio traded at one rebalancing (100% = everything sold and "
+                 "bought again). Every trade costs money, so lower bars are cheaper for you.")
 
 # ---------- Weights over time ----------
 st.subheader("How did the weights change over time?")
@@ -131,5 +139,7 @@ method = st.selectbox("Portfolio", [m for m in order if m != bench])
 area = px.area(weights_history[method], title=f"Weights of {method} at each rebalancing")
 area.update_layout(yaxis_tickformat=".0%", yaxis_title="Weight", xaxis_title=None, legend_title=None)
 st.plotly_chart(area)
+explain(profile, "How the portfolio changed over time: each colour is one product. Stable colours mean a stable "
+                 "portfolio, which is cheaper to manage and easier to follow.")
 
 next_button("app_pages/stress_test.py", "Next: stress test (past crises)")

@@ -19,9 +19,9 @@ limits that his situation allows. The limits are a "box", gamma chooses the poin
 """
 from src.data import ASSETS, SHORT_TERM
 from src.optimizer import check_constraints
-from src.questionnaire import (CRYPTO_CAP, CRYPTO_CHOICE, HORIZON, QE2_MAX_LOSS, QE3_PROFILES, UNIVERSE,
-                               VIEWS_QUESTION, capacity_score, is_experienced, missing_answers,
-                               risk_tolerance_score, rt_label)
+from src.questionnaire import (CRYPTO_CAP, CRYPTO_CHOICE, HOME_BIAS, HORIZON, QE2_MAX_LOSS, QE3_PROFILES,
+                               REGION_QUESTION, VIEWS_QUESTION, capacity_score, is_experienced, missing_answers,
+                               products_for, risk_tolerance_score, rt_label)
 
 GAMMA_MAX = 12.0  # gamma at RT = 0 (very risk averse)
 GAMMA_MIN = 1.0   # gamma at RT = 100 (very risk tolerant)
@@ -34,8 +34,6 @@ CAPACITY_TIERS = {
     6: ("Moderate", 0.70, 0.15, 0.20, 0.05),
     9: ("High", 1.00, 0.00, 0.20, 0.10),
 }
-# Products added (in this order) when the selected asset classes cannot satisfy the limits
-FILLERS = ["AGG", "SHY", "SPY", "EFA", "GLD"]
 
 
 # ---------- Risk tolerance -> gamma ----------
@@ -81,11 +79,13 @@ def capacity_tier(score, answers):
 class ClientProfile:
     """Everything the app knows about the client, computed from the answers of the questionnaire."""
 
-    def __init__(self, answers):
+    def __init__(self, answers, currency="USD"):
         missing = missing_answers(answers)
         if missing:
             raise ValueError("Please answer: " + ", ".join(missing))
         a = self.answers = dict(answers)
+        self.currency = currency  # the products depend on it: bonds and cash in the currency of the portfolio
+        self.region = REGION_QUESTION[1][a["QF3"]][1]
 
         # Risk tolerance -> gamma
         self.rt = risk_tolerance_score(a)
@@ -119,7 +119,9 @@ class ClientProfile:
         max_crypto = min(cap_crypto, CRYPTO_CAP[1][a["QF2"]][1]) if wants_crypto else 0.0
         c = self.recommended_constraints = {"max_equity": max_equity, "min_bonds": min_bonds,
                                             "min_short_term": min_short_term, "max_other": max_other,
-                                            "max_crypto": max_crypto, "max_weight_per_asset": MAX_WEIGHT_PER_ASSET}
+                                            "max_crypto": max_crypto, "max_weight_per_asset": MAX_WEIGHT_PER_ASSET,
+                                            "min_home_equity": 0.0 if self.region == "World" else HOME_BIAS,
+                                            "region": self.region}
         self.limit_sources = {  # which answer sets each limit (shown on the profile page)
             "max_equity": [name for name, v in sources.items() if v[0] == max_equity],
             "min_bonds": [name for name, v in sources.items() if v[1] == min_bonds] if min_bonds > 0 else [],
@@ -127,16 +129,20 @@ class ClientProfile:
         }
         self.crypto_blocked = wants_crypto and cap_crypto == 0
 
-        # Recommended products: the asset classes chosen in QF1, plus fillers if the limits need them
-        tickers = [t for choice in a["QF1"] for t in UNIVERSE[1][choice][1]]
+        # Recommended products: the asset classes chosen in QF1 (equities of the QF3 region, bonds in the currency
+        # of the portfolio), plus "fillers" if the limits need them
+        tickers = list(dict.fromkeys(t for choice in a["QF1"] for t in products_for(choice, self.region, currency)))
         if max_crypto == 0:
             tickers = [t for t in tickers if ASSETS[t][1] != "Crypto"]
         self.added_assets = []
+        short = SHORT_TERM[currency]
         prudent = self.max_loss is not None and self.max_loss >= -0.10  # QE2: at most 5% or 10% of loss
-        if (min_short_term > 0 or prudent) and SHORT_TERM not in tickers:  # money needed soon or prudent client
-            tickers.append(SHORT_TERM)
-            self.added_assets.append(SHORT_TERM)
-        for filler in FILLERS:
+        if (min_short_term > 0 or prudent) and short not in tickers:  # money needed soon or prudent client
+            tickers.append(short)
+            self.added_assets.append(short)
+        fillers = (products_for("b", self.region, currency)[:1] + [short]
+                   + products_for("a", self.region, currency) + ["GLD"])
+        for filler in fillers:
             if not check_constraints(tickers, c):
                 break
             if filler not in tickers:
@@ -160,8 +166,11 @@ class ClientProfile:
                                  "keep that amount in cash outside the portfolio.")
         if min_short_term > 0:
             self.notes.append(f"You may need part of this money soon ({' and '.join(self.limit_sources['min_short_term'])}): "
-                              f"at least {min_short_term:.0%} is kept in short-term Treasuries (SHY), which almost "
-                              "never lose value in US dollars, instead of long bonds or equities.")
+                              f"at least {min_short_term:.0%} is kept in short-term government bonds ({short}), "
+                              f"which almost never lose value in {currency}, instead of long bonds or equities.")
+        if self.region != "World":
+            self.notes.append(f"You prefer {self.region} (QF3): at least {HOME_BIAS:.0%} of your equities are invested "
+                              "there, the rest stays worldwide, because one region alone is less diversified.")
         if self.safeguard:
             self.notes.append("Because of low savings or heavy commitments, your capacity is treated as "
                               "'Limited' at most.")

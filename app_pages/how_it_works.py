@@ -24,21 +24,28 @@ st.markdown("""
   capacity at Limited. Each tier gives a maximum in equities, a minimum in bonds, and maximums in gold/commodities
   and crypto. The horizon (QD1) and the possible withdrawals (QD2) give their own equity maximum and bond minimum.
   **The most restrictive source applies.** The client can tighten these limits, never relax them.
-- **Money needed soon goes into short-term Treasuries (SHY).** A mean-variance optimiser looks at one period
+- **Money needed soon goes into short-term government bonds** (SHY in USD, Swiss government bonds 0-3 years
+  CSBGC3.SW in CHF). A mean-variance optimiser looks at one period
   only: for the bond minimum it would happily choose 20-year Treasuries (TLT), which can lose a lot when rates
   rise (about 30% in 2022). So money that may be needed within 3 years (QD1) or withdrawn within 12 months (QD2)
-  must be in SHY: at least 60%/40% for QD1 "within 1 year"/"1–3 years" and 50%/25%/10% for QD2
+  must be in short-term bonds: at least 60%/40% for QD1 "within 1 year"/"1–3 years" and 50%/25%/10% for QD2
   ">50%"/"25–50%"/"10–25%".
 - **Your loss limit (QE2) is respected.** QE2 asks for the largest temporary loss the client can tolerate. It is
   part of the tolerance score, and it is also a hard limit: in a bad year (5% chance, normal distribution) the
   recommended portfolio should not lose more. So its volatility must be at most |QE2| / 1.645 (5% → 3.0%,
   10% → 6.1%, 20% → 12.2%, 30% → 18.2%). If the portfolio of γ is riskier, we raise γ to the smallest value that
   respects the limit ("targeting a volatility", lab LN1, solved by bisection). Clients who tolerate at most 10%
-  always get SHY, the safe product. If even the safest portfolio inside the limits is too risky, we recommend
-  that safest portfolio and say so. This happens in CHF for a 5% limit: all our ETFs trade in USD, so even SHY
-  carries the USD/CHF currency risk (about 7% volatility per year in CHF).
-- **Diversification rules.** At most 40% in one product, except SHY (almost cash: no maximum). Narrow products
-  (one sector or country: QQQ, IWM, EWL, EWJ, EEM, VNQ, HYG, EMB, SLV) at most 15% each (core-satellite).
+  always get short-term government bonds, the safe product. If even the safest portfolio inside the limits is
+  too risky, we recommend that safest portfolio and say so.
+- **Region (QF3) and currency.** Equities follow the region the client prefers (Switzerland: SMI + world fund
+  ACWI; Europe: VGK + ACWI; USA: S&P 500, small caps + EFA; World: S&P 500 + EFA), and **at least 50% of the
+  equities** must be in that region, looking through the funds (ACWI is about 2% Swiss). The other half stays
+  worldwide: Switzerland alone is about 20 large companies, with Nestlé, Novartis and Roche about one third of the
+  index. Bonds and cash follow the **currency of the portfolio**: in CHF we use Swiss government and corporate
+  bonds (traded in CHF on SIX), so the safe part of the portfolio has no currency risk.
+- **Diversification rules.** At most 40% in one product, except the short-term government bonds (almost cash:
+  no maximum). Narrow products (one sector or country: QQQ, IWM, EWL, EWU, EWG, EWJ, EEM, VNQ, HYG, EMB, SLV,
+  Swiss mid caps) at most 15% each (core-satellite).
   Without this rule the most tolerant clients got 35% in real estate and 21% in emerging markets.
 - **Why capacity does not change γ.** If capacity also raised γ, it would be counted twice (limits *and* a γ
   floor), and for most clients the risk tolerance would no longer change anything. Here a tolerant client with
@@ -70,8 +77,8 @@ st.markdown("""
 st.header("2. Data")
 st.write("The app downloads the daily prices directly from Yahoo Finance when it starts (again every day, or "
          "with the button 'Update data now'). Nothing has to be run before. We use monthly returns; "
-         "expected returns and covariances are estimated on the last 60 months. In CHF, prices are converted "
-         "with the USD/CHF rate.")
+         "expected returns and covariances are estimated on the last 60 months. Products ending in .SW trade in "
+         "CHF on the Swiss exchange; the others in USD. Prices are converted with the USD/CHF rate when needed.")
 st.table({"Ticker": list(ASSETS), "Product": [a[0] for a in ASSETS.values()],
           "Class": [a[1] for a in ASSETS.values()]})
 
@@ -161,7 +168,8 @@ st.header("8. Limitations")
 st.markdown("""
 - Past returns are a noisy guess of future returns (this is why we recommend the market equilibrium returns, and offer resampling).
 - 60 months is a short window; a longer one is more stable but reacts slower.
-- In CHF, we do not hedge the currency risk; the CHF risk-free rate is an approximation (SNB policy rate).
+- We do not hedge the currency risk of equities; the CHF risk-free rate is an approximation (SNB policy rate).
+- The regional weights of the funds are approximate, rounded index weights, not live data.
 - The market weights of the equilibrium returns are our own round numbers, not measured market capitalisations.
 - The current month is not finished: it is used as if it was a full month.
 - We do not shrink the covariance matrix (Ledoit-Wolf): with about 10 products and 60 months, the estimation

@@ -46,7 +46,8 @@ class ReportTests(unittest.TestCase):
         from src.client_profile import ClientProfile
         from src.report import client_report
         profile = ClientProfile(dict(QE1="c", QE2="c", QE3="b", QE4="c", QD1="b", QD2="c", age="b", income="b",
-                                     savings="a", commitments="b", QF1=["a", "b"], QF2="b", QB1="a", QC1="a", QC3="d"))
+                                     savings="a", commitments="b", QF1=["a", "b"], QF2="b", QF3="c", QB1="a", QC1="a",
+                                     QC3="d"))
         weights = pd.Series({"SPY": .5, "AGG": .3, "SHY": .2})
         orders, cash = order_list(weights, pd.Series({"SPY": 600., "AGG": 100., "SHY": 80.}), 10_000)
         plan = dict(initial=10_000, monthly=100, years=10, paid_in=22_000, goal=30_000, p5=18_000, p50=28_000,

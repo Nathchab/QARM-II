@@ -42,6 +42,16 @@ class MeanVarianceTests(unittest.TestCase):
         self.assertAlmostEqual(w.SHY, .3, places=6)  # SHY has the lowest return: exactly the minimum
         self.assertIn("SHY", check_constraints(["SPY", "TLT"], c)[0])  # SHY missing: explained
 
+    def test_at_least_half_of_the_equities_in_the_region(self):
+        tickers = ["CSSMI.SW", "ACWI", "CSBGC7.SW"]
+        mu = pd.Series([.05, .09, .02], index=tickers)  # the world looks better, but the client prefers Switzerland
+        cov = diagonal_cov(tickers, [.03, .03, .002])
+        c = dict(NO_LIMIT, min_home_equity=.5, region="Switzerland")
+        w = mean_variance(mu, cov, 1., c)
+        swiss = w["CSSMI.SW"] + .02 * w["ACWI"]  # ACWI is about 2% Swiss
+        self.assertGreaterEqual(swiss, .5 * (w["CSSMI.SW"] + w["ACWI"]) - 1e-6)
+        self.assertLess(mean_variance(mu, cov, 1., NO_LIMIT)["CSSMI.SW"], w["CSSMI.SW"])  # without the rule: less
+
     def test_same_units_for_mu_and_cov_do_not_matter(self):
         mu = pd.Series([.08, .03, .05], index=["SPY", "AGG", "GLD"])
         cov = diagonal_cov(mu.index, [.04, .01, .03])

@@ -2,7 +2,7 @@
 import streamlit as st
 
 from src.app_helpers import get_currency, next_button, get_profile, recommendation_summary, show_profile_messages, tighten
-from src.data import ASSETS, available_assets, first_date
+from src.data import ASSETS, SHORT_TERM, available_assets, first_date
 from src.optimizer import check_constraints
 from src.portfolios import WINDOW
 
@@ -62,7 +62,7 @@ col1, col2 = st.columns(2)
 c = {
     "max_equity": slider(col1, "Maximum in equities", "max_equity", 0, rec_c["max_equity"], saved_c["max_equity"], 5),
     "min_bonds": slider(col2, "Minimum in bonds", "min_bonds", rec_c["min_bonds"], 1, saved_c["min_bonds"], 5),
-    "min_short_term": slider(col2, "Minimum in short-term Treasuries (SHY)", "min_short_term", rec_c["min_short_term"],
+    "min_short_term": slider(col2, "Minimum in short-term government bonds", "min_short_term", rec_c["min_short_term"],
                              max(rec_c["min_short_term"], rec_c["max_weight_per_asset"]), saved_c["min_short_term"], 5),
     "max_other": slider(col1, "Maximum in gold and commodities", "max_other", 0, rec_c["max_other"],
                         saved_c["max_other"], 5),
@@ -71,9 +71,15 @@ c = {
                                    saved_c["max_weight_per_asset"], 5),
 }
 
-st.caption("SHY (short-term Treasuries, almost cash) has no maximum. Narrow products (one sector or one country, "
-           "like REITs or emerging markets) are limited to 15% each." +
-           (" In CHF, SHY is not riskless: it carries the USD/CHF currency risk." if get_currency() == "CHF" else ""))
+c["min_home_equity"] = 0.0
+if rec_c["min_home_equity"] > 0:  # region chosen in QF3
+    c["min_home_equity"] = slider(col2, f"Minimum share of your equities in {rec_c['region']}", "min_home_equity",
+                                  rec_c["min_home_equity"], 1, saved_c["min_home_equity"], 5)
+c["region"] = rec_c["region"]
+
+st.caption(f"Short-term government bonds ({SHORT_TERM[get_currency()]}, almost cash in {get_currency()}) have no "
+           "maximum. Narrow products (one sector or one country, like REITs or emerging markets) are limited to 15% "
+           "each. Products marked .SW trade in CHF on the Swiss exchange.")
 
 # Save the choices for the next pages
 st.session_state["assets"] = tickers
@@ -81,7 +87,8 @@ st.session_state["constraints"] = c
 
 stricter = [label for key, label in [("max_equity", "equities"), ("min_bonds", "bonds"), ("min_short_term", "short-term"),
                                       ("max_other", "gold and commodities"), ("max_crypto", "crypto"),
-                                      ("max_weight_per_asset", "maximum per product")] if c[key] != rec_c[key]]
+                                      ("max_weight_per_asset", "maximum per product"),
+                                      ("min_home_equity", "region")] if c[key] != rec_c[key]]
 if stricter:
     st.caption("Stricter than your profile: " + ", ".join(stricter) + ".")
 if any(ASSETS[t][1] == "Crypto" for t in tickers) and c["max_crypto"] == 0:

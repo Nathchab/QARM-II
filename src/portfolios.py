@@ -84,6 +84,19 @@ def gamma_for_loss_limit(forecast, cov, gamma, c, max_loss):
     return gamma_for_max_volatility(forecast, cov, gamma, c, -max_loss / BAD_YEAR)
 
 
+# Why we recommend each method (shown to the client in the recommendation box)
+WHY = {
+    "Equilibrium": "Mean-variance (Markowitz) with the returns the market as a whole expects: the highest expected "
+                   "return for the risk you accept (your γ), inside your limits.",
+    "Minimum variance": "You are very prudent (conservative tolerance or at most 5% of loss in QE2): we choose the "
+                        "portfolio with the lowest risk inside your limits. It needs no forecast of returns.",
+    "Risk parity (ERC)": "Your risk answers contradict each other, so we cannot measure your γ reliably. Risk parity "
+                         "needs neither γ nor a forecast: every product brings the same share of the risk.",
+    "Black-Litterman": "You entered your own market views: Black-Litterman mixes them with the market equilibrium, "
+                       "according to your confidence, then optimises for your γ and your limits.",
+}
+
+
 def recommended_method(profile, portfolios, forecast, cov):
     """The method we recommend to this client (rules at the top of this file)."""
     if "Black-Litterman" in portfolios:  # built only when the client entered views

@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from src.app_helpers import (client_method, get_benchmark, get_choices, get_currency, get_data, get_profile,
+from src.app_helpers import (client_method, explain, get_benchmark, get_choices, get_currency, get_data, get_profile,
                              get_valid_portfolios, highlight_lines, method_label, next_button)
 from src.portfolios import METHODS
 from src.stress_test import CRISES, crisis_summary, replay
@@ -45,6 +45,9 @@ fig.update_layout(yaxis_title=currency, xaxis_title=None, legend_title=None)
 st.plotly_chart(fig)
 st.caption("Orange: your portfolio. Dashed: the benchmark. Grey: the other methods, only for comparison. "
            "The dotted line is the end of the crisis.")
+explain(profile, "What your money would have become if you had invested at the worst moment, just before the "
+                 "crisis, and kept the portfolio. The question is not only how much it fell, but whether you would "
+                 "have stayed invested: selling at the bottom turns a temporary loss into a real one.")
 
 # ---------- Worst loss and recovery ----------
 loss, months = crisis_summary(prices, portfolios[method], start, end)
@@ -80,5 +83,7 @@ for name in names:
     rows[label(name)] = row
 st.dataframe(pd.DataFrame(rows).T.style.set_properties(subset=pd.IndexSlice[[yours], :],
                                                        **{"background-color": "#fde4dc", "font-weight": "bold"}))
+explain(profile, "**Worst loss**: the largest fall during the crisis. **Months to recover**: how long it took to get "
+                 "back to the starting value ('not yet' = still below).")
 
 next_button("app_pages/how_it_works.py", "Next: how does it work?")

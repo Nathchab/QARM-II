@@ -2,11 +2,12 @@
 import pandas as pd
 import streamlit as st
 
-from src.app_helpers import get_currency, next_button, recommendation_summary, show_profile_messages
+from src.app_helpers import get_currency, next_button, recommendation_summary, refresh_profile, show_profile_messages
 from src.client_profile import GAMMA_MAX, GAMMA_MIN, ClientProfile, gamma_from_rt, qe3_gamma_interval
 from src.data import ASSETS, available_assets
-from src.questionnaire import (CAPACITY, CRYPTO_CAP, CRYPTO_CHOICE, EXPERIENCE, HORIZON, QE3_PROFILES,
-                               RISK_TOLERANCE, UNIVERSE, VIEWS_QUESTION, is_experienced, missing_answers)
+from src.questionnaire import (CAPACITY, CRYPTO_CAP, CRYPTO_CHOICE, EXPERIENCE, HOME_BIAS, HORIZON, QE3_PROFILES,
+                               REGION_QUESTION, RISK_TOLERANCE, UNIVERSE, VIEWS_QUESTION, is_experienced,
+                               missing_answers)
 
 st.title("1. Your investor profile")
 st.write("Two things decide your portfolio: **how much risk you are willing to take** (your risk "
@@ -48,6 +49,10 @@ answers["QF1"] = st.multiselect(f"**{text}**", list(opts), default=saved.get("QF
 if CRYPTO_CHOICE in answers["QF1"]:
     text, opts = CRYPTO_CAP
     answers["QF2"] = ask("QF2", text, opts)
+text, opts = REGION_QUESTION
+answers["QF3"] = ask("QF3", text, opts)
+st.caption(f"Your region gets at least {HOME_BIAS:.0%} of your equities; the rest stays worldwide, because one region "
+           "alone is less diversified. Bonds and cash are always in the currency of your portfolio (menu on the left).")
 
 st.header("5. Your experience")
 for code, (text, opts) in EXPERIENCE.items():
@@ -64,14 +69,14 @@ if submitted:
     if missing:
         st.error("Please answer every question (missing: " + ", ".join(missing) + ").")
     else:
-        st.session_state["profile"] = ClientProfile(answers)
+        st.session_state["profile"] = ClientProfile(answers, get_currency())
         # new profile -> we start again from our recommended products, constraints and method
         for key in ["assets", "constraints", "method"] + [k for k in st.session_state if k.startswith("pick_")]:
             st.session_state.pop(key, None)
 
 # ---------- Show profile (stays visible for the next pages) ----------
 if "profile" in st.session_state:
-    profile = st.session_state["profile"]
+    profile = refresh_profile()
     c = profile.recommended_constraints
     st.divider()
     st.header(f"Your profile: {profile.label} tolerance, {profile.capacity_label.lower()} capacity")
@@ -94,10 +99,11 @@ if "profile" in st.session_state:
 
     st.subheader("Your allocation limits")
     st.table(pd.DataFrame({
-        "Limit": ["Maximum in equities", "Minimum in bonds", "Minimum in short-term Treasuries (SHY)",
-                  "Maximum in gold and commodities", "Maximum in crypto", "Maximum per product"],
+        "Limit": ["Maximum in equities", "Minimum in bonds", "Minimum in short-term government bonds",
+                  "Maximum in gold and commodities", "Maximum in crypto", "Maximum per product",
+                  f"Minimum share of your equities in {profile.region}"],
         "Value": [f"{c[k]:.0%}" for k in ("max_equity", "min_bonds", "min_short_term", "max_other", "max_crypto",
-                                          "max_weight_per_asset")],
+                                          "max_weight_per_asset", "min_home_equity")],
         "Set by": [", ".join(profile.limit_sources["max_equity"]),
                    ", ".join(profile.limit_sources["min_bonds"]) or "no minimum",
                    ", ".join(profile.limit_sources["min_short_term"]) or "no money needed soon",
@@ -105,7 +111,8 @@ if "profile" in st.session_state:
                    "you did not choose crypto" if CRYPTO_CHOICE not in profile.answers["QF1"]
                    else "your horizon or financial capacity" if profile.crypto_blocked
                    else "your choice (QF2) and financial capacity",
-                   "diversification rule (SHY: no maximum, narrow products: 15%)"],
+                   "diversification rule (short-term bonds: no maximum, narrow products: 15%)",
+                   "your region (QF3)" if profile.region != "World" else "no regional preference"],
     }))
     st.write("Recommended products: " + ", ".join(f"{t} ({ASSETS[t][0]})" for t in profile.recommended_assets))
 

@@ -3,7 +3,7 @@ import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
 
-from src.app_helpers import (client_method, get_choices, get_currency, get_data, get_profile, get_valid_portfolios,
+from src.app_helpers import (client_method, explain, get_choices, get_currency, get_data, get_profile, get_valid_portfolios,
                              get_views, method_label, next_button)
 from src.black_litterman import posterior_returns, restrict_views
 from src.optimizer import portfolio_stats
@@ -67,6 +67,10 @@ fig.add_scatter(x=months, y=initial + monthly * 12 * months, mode="lines", line=
 fig.add_hline(y=goal, line_dash="dash", annotation_text="Your goal")
 fig.update_layout(xaxis_title="Years", yaxis_title=currency, title="5,000 simulated futures")
 st.plotly_chart(fig)
+explain(profile, "We simulated 5,000 possible futures of your portfolio. The middle line is the typical result "
+                 "(half of the futures do better, half worse). The coloured band contains 90% of the futures: the "
+                 "bottom of the band is a bad but possible outcome, the top a very good one. The dotted line is what "
+                 "you paid in: above it, you made money.")
 
 col1, col2 = st.columns(2)
 col1.metric("Probability of reaching your goal", f"{plan['prob_goal']:.0%}")
@@ -75,8 +79,8 @@ col2.metric(f"Probability of a fall of more than {loss_limit:.0%} at some point"
 if plan["prob_goal"] < 0.5:
     st.info("Your goal is reached in less than half of the futures: save more each month, wait longer, "
             "or lower the goal.")
-st.caption(f"Expected return {exp_return:.1%} per year (our forecast: market equilibrium), minus our fee of {MANAGEMENT_FEE:.2%}, "
-           f"volatility {vol:.1%}. Monthly returns are drawn from a normal distribution and are independent from "
+st.caption(f"Expected return {exp_return:.1%} per year (our forecast: market equilibrium), minus our fee of "
+           f"{MANAGEMENT_FEE:.2%}, volatility {vol:.1%}. Monthly returns are drawn from a normal distribution and are independent from "
            "one month to the next. Amounts are not adjusted for inflation.")
 
 # ---------- Order list ----------

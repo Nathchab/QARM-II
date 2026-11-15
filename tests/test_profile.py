@@ -12,7 +12,7 @@ from src.questionnaire import CAPACITY, HORIZON, QE3_PROFILES, RISK_TOLERANCE, U
 
 ALL_CLASSES = list(UNIVERSE[1])
 BASE = dict(QE1="c", QE2="c", QE3="b", QE4="c", QD1="e", QD2="e",
-            age="b", income="c", savings="c", commitments="a", QF1=ALL_CLASSES, QF2="b",
+            age="b", income="c", savings="c", commitments="a", QF1=ALL_CLASSES, QF2="b", QF3="c",
             QB1="a", QC1="a", QC3="d")
 
 
@@ -150,6 +150,30 @@ class ExperienceTests(unittest.TestCase):
     def test_overconfident_investor_fails_the_knowledge_check(self):
         p = profile(QB1="e", QC1="e", QC3="c")
         self.assertFalse(p.experienced)
+
+
+class RegionAndCurrencyTests(unittest.TestCase):
+    def test_equities_follow_the_region_bonds_follow_the_currency(self):
+        swiss_chf = ClientProfile(dict(BASE, QF3="a"), "CHF")
+        self.assertIn("CSSMI.SW", swiss_chf.recommended_assets)
+        self.assertIn("CSBGC7.SW", swiss_chf.recommended_assets)  # Swiss government bonds instead of AGG
+        self.assertNotIn("AGG", swiss_chf.recommended_assets)
+        self.assertEqual(swiss_chf.recommended_constraints["min_home_equity"], .5)
+        world_usd = profile()
+        self.assertIn("SPY", world_usd.recommended_assets)
+        self.assertIn("AGG", world_usd.recommended_assets)
+        self.assertEqual(world_usd.recommended_constraints["min_home_equity"], 0)
+
+    def test_cash_is_in_the_currency_of_the_portfolio(self):
+        self.assertIn("CSBGC3.SW", ClientProfile(dict(BASE, QF1=["a", "b"], QD1="b"), "CHF").recommended_assets)
+        self.assertIn("SHY", ClientProfile(dict(BASE, QF1=["a", "b"], QD1="b"), "USD").recommended_assets)
+
+    def test_every_region_and_currency_gives_feasible_limits(self):
+        for region, currency in itertools.product("abcd", ["USD", "CHF"]):
+            for answers in [dict(QF1=["a"]), dict(QF1=["a"], QD1="a"), dict(QF1=["a", "b"], QE2="a")]:
+                p = ClientProfile(dict(BASE, QF3=region, **answers), currency)
+                self.assertEqual(check_constraints(p.recommended_assets, p.recommended_constraints), [],
+                                 (region, currency, answers))
 
 
 class TolerantClientWithLowCapacityTests(unittest.TestCase):

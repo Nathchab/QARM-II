@@ -18,10 +18,13 @@ import pandas as pd
 
 # Weight of each product in the "market portfolio", in %. These are OUR OWN round numbers: stocks and
 # bonds dominate, as in Doeswijk, Lam & Swinkels (2014), but we did not copy their figures (they have
-# about 36% in equities, and no gold or crypto). ETFs that overlap (QQQ is inside SPY) are a simplification.
+# about 36% in equities, and no gold or crypto). ETFs that overlap (QQQ is inside SPY, everything is inside
+# ACWI) are a simplification.
 # We only use the products chosen by the client and rescale them to 100%.
-MARKET_WEIGHTS = {"SPY": 25, "QQQ": 5, "IWM": 2, "EFA": 10, "VGK": 4, "EWL": 1, "EWJ": 2, "EEM": 5,
-                  "VNQ": 3, "AGG": 18, "SHY": 3, "TLT": 4, "TIP": 2, "LQD": 5, "HYG": 1, "EMB": 1,
+MARKET_WEIGHTS = {"SPY": 25, "QQQ": 5, "IWM": 2, "ACWI": 40, "EFA": 10, "VGK": 4, "EZU": 3, "EWU": 1.5, "EWG": 1,
+                  "CSSMI.SW": 1, "CSSMIM.SW": 0.3, "EWL": 1, "EWJ": 2, "EEM": 5, "VNQ": 3,
+                  "AGG": 18, "SHY": 3, "TLT": 4, "TIP": 2, "LQD": 5, "HYG": 1, "EMB": 1, "BNDX": 10, "BWX": 3,
+                  "CSBGC3.SW": 1, "CSBGC7.SW": 1.5, "CSBGC0.SW": 1, "CHCORP.SW": 1,
                   "GLD": 3, "SLV": 0.5, "DBC": 2, "BTC-USD": 1, "ETH-USD": 0.5}
 DELTA = 2.5  # risk aversion of the average investor (He & Litterman 1999)
 TAU = 0.05   # uncertainty of the prior: Gamma = tau * Sigma in LN4 (small: the prior is quite reliable)

@@ -6,6 +6,7 @@ from datetime import date
 from fpdf import FPDF
 
 from src.data import ASSETS
+from src.optimizer import region_exposures
 from src.planning import MANAGEMENT_FEE
 
 NAVY, ORANGE, GREY, LIGHT = (24, 44, 84), (228, 87, 46), (110, 110, 110), (242, 244, 248)
@@ -140,6 +141,9 @@ def client_report(profile, c, method, weights, exp_return, vol, currency, plan, 
     pdf.cell(0, 6, "Blue: equities   Green: bonds   Orange: gold and commodities   Purple: crypto",
              new_x="LMARGIN", new_y="NEXT")
     pdf.set_text_color(0, 0, 0)
+    regions = {r: w for r, w in region_exposures(weights).items() if w >= 0.005}
+    pdf.text("Regions (looking inside the funds, approximate): "
+             + ", ".join(f"{r} {w:.0%}" for r, w in sorted(regions.items(), key=lambda x: -x[1])), size=9)
 
     pdf.section(f"3. Your plan over {plan['years']} years")
     pdf.text(f"Initial amount {plan['initial']:,.0f} {currency} and {plan['monthly']:,.0f} {currency} per month: "

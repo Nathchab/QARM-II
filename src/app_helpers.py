@@ -3,17 +3,19 @@ Small helpers shared by the pages of the app (with Streamlit cache, so pages loa
 """
 import streamlit as st
 
+from src.client_profile import ClientProfile
+
 from src.black_litterman import posterior_returns, restrict_views
-from src.data import available_assets, load_prices, monthly_returns, risk_free
+from src.data import SHORT_TERM, available_assets, load_prices, monthly_returns, risk_free
 from src.optimizer import check_constraints, class_exposures
 from src.portfolios import (BENCHMARKS, LABELS, bad_year_loss, benchmark_weights, build_portfolios, estimate,
                             gamma_for_loss_limit, recommended_method)
 
 
 def tighten(profile_limits, chosen):
-    """The client can make the profile limits stricter, never looser."""
-    return {key: max(limit, chosen.get(key, limit)) if key.startswith("min_") else min(limit, chosen.get(key, limit))
-            for key, limit in profile_limits.items()}
+    """The client can make the profile limits stricter, never looser (the region stays the one of the profile)."""
+    return {key: limit if isinstance(limit, str) else max(limit, chosen.get(key, limit)) if key.startswith("min_")
+            else min(limit, chosen.get(key, limit)) for key, limit in profile_limits.items()}
 
 
 def next_button(page, label):
@@ -28,7 +30,26 @@ def get_profile():
         st.warning("Please fill in your investor profile first.")
         next_button("app_pages/profile.py", "Go to the questionnaire")
         st.stop()
-    return st.session_state["profile"]
+    return refresh_profile()
+
+
+def refresh_profile():
+    """The client's profile, recomputed if he changed the currency (bonds and cash depend on it)."""
+    profile = st.session_state["profile"]
+    if profile.currency != get_currency():
+        profile = st.session_state["profile"] = ClientProfile(profile.answers, get_currency())
+        for key in ["assets", "constraints", "method"] + [k for k in st.session_state if k.startswith("pick_")]:
+            st.session_state.pop(key, None)
+    return profile
+
+
+def explain(profile, text):
+    """Explanation of a chart or table: always visible for beginners, one click away for experienced investors."""
+    if profile.experienced:
+        with st.expander("💡 What does this show?"):
+            st.write(text)
+    else:
+        st.info("💡 **What does this show?** " + text)
 
 
 def show_profile_messages(profile, notes=False):
@@ -179,9 +200,8 @@ def loss_limit_note(profile, gamma, loss, currency, method):
     if profile.max_loss is None:
         return None
     if loss < profile.max_loss - 1e-4:  # even the safest portfolio inside the limits loses more
-        advice = ("In CHF every ETF carries the USD/CHF currency risk, even the short-term Treasuries (SHY): "
-                  "investing in USD, or keeping this money in a CHF savings account, would be safer."
-                  if currency == "CHF" else "Adding short-term Treasuries (SHY) would lower the risk.")
+        advice = (f"Adding short-term government bonds ({SHORT_TERM[currency]}) or removing risky products "
+                  "would lower the risk.")
         return (f"Even the safest portfolio within your limits could lose about {-loss:.0%} in a bad year, more "
                 f"than the {-profile.max_loss:.0%} you can tolerate (QE2): we recommend this safest portfolio "
                 f"(minimum risk). {advice}")

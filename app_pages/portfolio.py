@@ -5,14 +5,15 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from src.app_helpers import (get_benchmark, get_choices, get_currency, get_data, get_profile,
+from src.app_helpers import (explain, get_benchmark, get_choices, get_currency, get_data, get_profile,
                              get_valid_portfolios, get_views, loss_limit_note, method_label, next_button,
                              show_profile_messages)
 from src.black_litterman import (CONFIDENCE_LEVELS, EXTREME_VIEW, MAX_VIEWS, market_weights, posterior_returns,
                                   prior_returns, restrict_views, view_check, view_problems)
-from src.data import ASSETS, SHORT_TERM
-from src.optimizer import beta, class_exposures, frontier, portfolio_stats, risk_contributions, tracking_error
-from src.portfolios import METHODS, WINDOW, bad_year_loss, dominated_by, estimate, recommended_method
+from src.data import ASSETS
+from src.optimizer import (beta, class_exposures, frontier, home_row, portfolio_stats, region_exposures,
+                           risk_contributions, short_term_row, tracking_error)
+from src.portfolios import METHODS, WHY, WINDOW, bad_year_loss, dominated_by, estimate, recommended_method
 
 CLASS_COLORS = {"Equity": "#1f77b4", "Bond": "#2ca02c", "Other": "#ff7f0e", "Crypto": "#9467bd"}
 
@@ -95,8 +96,16 @@ recommended = recommended_method(profile, portfolios, forecast, cov)
 methods = [m for m in METHODS if m in portfolios]
 saved = st.session_state.get("method", recommended)
 default = saved if saved in methods else recommended if recommended in methods else methods[0]
-method = st.radio("Choose a method", methods, horizontal=True, index=methods.index(default),
-                  format_func=lambda m: method_label(m) + (" – recommended" if m == recommended else ""))
+# ---------- Our recommendation, clearly visible ----------
+with st.container(border=True):
+    st.markdown(f"### ⭐ Our recommendation for you: :orange[{method_label(recommended)}]")
+    st.write(WHY[recommended])
+    st.caption("You can look at the other methods below: they are shown to compare.")
+method = st.radio("Choose a method to look at", methods, horizontal=True, index=methods.index(default),
+                  format_func=lambda m: f"⭐ :orange[**{method_label(m)}** (recommended)]" if m == recommended
+                  else method_label(m))
+if method != recommended:
+    st.warning(f"You are looking at {method_label(method)}, not at our recommendation.")
 st.session_state["method"] = method
 weights = portfolios[method]
 
@@ -132,6 +141,11 @@ col2.metric("Volatility", f"{vol:.1%}")
 col3.metric("Sharpe ratio", f"{(ret - rf_now) / vol:.2f}" if vol > 0 else "–")
 col4.metric("Beta vs benchmark", f"{beta(past @ weights, benchmark_returns):.2f}",
             help=f"Benchmark: {benchmark_name} (you can change it on the backtest page)")
+explain(profile, "**Expected return**: what the portfolio should earn per year on average (our forecast, not a "
+                 "promise). **Volatility**: how much it moves up and down in a typical year; about 2 years out of 3 "
+                 "the return stays within ± one volatility of the expected return. **Sharpe ratio**: extra return "
+                 "per unit of risk, compared with a riskless investment (higher is better). **Beta**: if the "
+                 "benchmark moves by 1%, your portfolio moves on average by beta %.")
 loss = bad_year_loss(weights, forecast, cov)
 rec_loss = bad_year_loss(portfolios.get(recommended, weights), forecast, cov)
 note = loss_limit_note(profile, gamma, rec_loss, currency, recommended)
@@ -157,8 +171,10 @@ LIMITS = {"max_equity": ("Equity", "maximum in equities"), "min_bonds": ("Bond",
           "max_other": ("Other", "maximum in gold and commodities"), "max_crypto": ("Crypto", "maximum in crypto")}
 binding = [name for key, (kind, name) in LIMITS.items()
            if abs(exposure[kind] - c[key]) <= 1e-6 and not (key in ("min_bonds", "max_crypto") and c[key] == 0)]
-if c.get("min_short_term", 0) > 0 and abs(weights.get(SHORT_TERM, 0) - c["min_short_term"]) <= 1e-6:
-    binding.append("minimum in short-term Treasuries")
+if c.get("min_short_term", 0) > 0 and abs(short_term_row(tickers) @ weights - c["min_short_term"]) <= 1e-6:
+    binding.append("minimum in short-term government bonds")
+if c.get("min_home_equity", 0) > 0 and abs(home_row(tickers, c) @ weights) <= 1e-6:
+    binding.append(f"minimum share of your equities in {c['region']}")
 if binding and method not in ("Risk parity (ERC)", "Minimum variance"):
     st.caption("Your limits are binding: " + ", ".join(binding) + ". Without them, the "
                "optimiser would choose a different mix for your γ.")
@@ -172,12 +188,31 @@ table = pd.DataFrame({
 })
 col1, col2 = st.columns(2)
 col1.plotly_chart(px.bar(table, x=table.index, y="Weight", color="Class", title="Weights",
-                         color_discrete_map=CLASS_COLORS,
-                         text_auto=".0%").update_layout(yaxis_tickformat=".0%", xaxis_title=None))
+                         color_discrete_map=CLASS_COLORS, text_auto=".0%").update_layout(
+    yaxis_tickformat=".0%", xaxis_title=None).update_traces(textposition="outside", cliponaxis=False))
 col2.plotly_chart(px.bar(table, x=table.index, y="Risk contribution", color="Class",
                          color_discrete_map=CLASS_COLORS,
-                         title="Where does the risk come from?",
-                         text_auto=".0%").update_layout(yaxis_tickformat=".0%", xaxis_title=None))
+                         title="Where does the risk come from?", text_auto=".0%").update_layout(
+    yaxis_tickformat=".0%", xaxis_title=None).update_traces(textposition="outside", cliponaxis=False))
+explain(profile, "**Weights** (left): how much of your money goes into each product. **Risk contributions** "
+                 "(right): how much of the ups and downs of the portfolio comes from each product. Equities often "
+                 "bring most of the risk even with a smaller weight, because they move much more than bonds.")
+
+# ---------- Regions ----------
+regions = pd.Series(region_exposures(weights))
+regions = regions[regions > 0.0005]
+col1, col2 = st.columns(2)
+classes = {k: v for k, v in exposure.items() if v > 0.0005}
+col1.plotly_chart(px.pie(names=list(classes), values=list(classes.values()), hole=0.5, title="By asset class",
+                         color=list(classes), color_discrete_map=CLASS_COLORS).update_traces(textinfo="percent+label"))
+col2.plotly_chart(px.bar(x=regions.values, y=regions.index, orientation="h", text_auto=".0%",
+                         title="Where is your money invested?").update_layout(
+    xaxis_tickformat=".0%", xaxis_title=None, yaxis_title=None, yaxis=dict(autorange="reversed")))
+explain(profile, "The left chart splits your money between equities, bonds, gold/commodities and crypto. The right "
+                 "chart looks inside the funds: a world fund (ACWI) is about two thirds North America, so its weight "
+                 "is split between regions (approximate, rounded index weights). Gold, commodities and crypto belong "
+                 "to no region." + (f" You asked for {c['region']}: at least {c['min_home_equity']:.0%} of your "
+                                 "equities are there." if c.get("min_home_equity", 0) > 0 else ""))
 
 # ---------- Is the recommended portfolio efficient? ----------
 better = dominated_by(portfolios, forecast, cov, recommended) if recommended in portfolios else []
@@ -206,14 +241,21 @@ fig.add_scatter(x=np.sqrt(np.diag(cov)), y=forecast, mode="markers+text", text=l
                 textposition="top center", name="Single products", marker=dict(color="lightgrey"))
 for m, w in portfolios.items():
     r, v = portfolio_stats(w, forecast, cov)
-    fig.add_scatter(x=[v], y=[r], mode="markers", name=method_label(m),
-                    marker=dict(size=18 if m == method else 11, symbol="star" if m == method else "circle"))
-fig.update_layout(title="Efficient frontier with our forecast (the star is the method you selected)",
+    fig.add_scatter(x=[v], y=[r], mode="markers", name=method_label(m) + (" ⭐ recommended" if m == recommended else ""),
+                    marker=dict(size=20 if m == recommended else 11, symbol="star" if m == recommended else "circle",
+                                color="#e4572e" if m == recommended else None,
+                                line=dict(width=3, color="black") if m == method else None))
+fig.update_layout(title="Efficient frontier with our forecast (orange star: our recommendation)",
                   xaxis_title="Volatility", yaxis_title="Expected return", xaxis_tickformat=".0%", yaxis_tickformat=".1%")
 st.plotly_chart(fig)
 st.caption("Minimum variance is the left end of the frontier. Mean-variance and resampled mean-variance trust the "
-           "average returns of the last 5 years, so with our forecast they are below the frontier. Risk parity uses no expected returns at all: it gives up some "
-           "expected return to spread the risk.")
+           "average returns of the last 5 years, so with our forecast they are below the frontier. Risk parity uses "
+           "no expected returns at all: it gives up some expected return to spread the risk.")
+explain(profile, "Each point is a portfolio: to the right = more risk (volatility), higher = more expected return. "
+                 "The **efficient frontier** (blue line) is the best you can get: for each level of risk, the "
+                 "highest expected return possible with your products and limits. A portfolio below the line is "
+                 "not efficient: another one gives more return for the same risk. The grey points are the single "
+                 "products: combining them gives more return for less risk (diversification).")
 
 # ---------- Compare the methods ----------
 st.subheader("Compare the methods")
@@ -227,11 +269,15 @@ stats = pd.DataFrame({m: {"Expected return (our forecast)": portfolio_stats(w, f
                       for m, w in portfolios.items()})
 table = pd.concat([compare, stats])
 table.columns = [method_label(m) for m in table.columns]
-st.dataframe(table.style.format("{:.1%}").format("{:.2f}", subset=pd.IndexSlice[["Beta vs benchmark"], :]))
+rec_col = method_label(recommended)
+st.dataframe(table.style.format("{:.1%}").format("{:.2f}", subset=pd.IndexSlice[["Beta vs benchmark"], :])
+             .set_properties(subset=[rec_col], **{"background-color": "#fde4dc", "font-weight": "bold"}))
 st.caption(f"Benchmark: {benchmark_name}. Beta and tracking error (lab LN2) on the last {WINDOW} months. "
            f"The past average is not a forecast: mean-variance was built to be the best portfolio for exactly these "
            "past returns, so of course it looks best on them. The backtest (page 5) compares the methods fairly, "
            "out of sample.")
+explain(profile, "Each column is one method (ours is highlighted): the weights of each product, then its numbers. "
+                 "**Tracking error**: how far the portfolio can drift away from the benchmark in a year.")
 
 # ---------- Composition map (lab LN3): sensitivity to gamma ----------
 if not front.empty:
@@ -243,5 +289,8 @@ if not front.empty:
     area.add_vline(x=min(gamma, front["Gamma"].max()), line_dash="dash")
     area.update_layout(yaxis_title="Weight", yaxis_tickformat=".0%", xaxis_title="γ (risk aversion)")
     st.plotly_chart(area)
+    explain(profile, "From left to right the investor is more and more prudent (higher γ): the colours show how the "
+                     "optimal portfolio slowly moves from equities to bonds and short-term bonds. It shows that your "
+                     "portfolio changes smoothly with your answers, without jumps.")
 
 next_button("app_pages/plan.py", "Next: your plan (projection, goal, orders, report)")

@@ -5,7 +5,7 @@ Only the questions that change the portfolio are asked:
   - E. Risk tolerance (QE1-QE4)      -> score RT (0-100)     -> risk aversion gamma
   - D. Horizon and liquidity (QD1-QD2) -> allocation limits
   - Financial situation (4 questions)  -> capacity score (0-9) -> allocation limits
-  - F. Asset universe (QF1-QF2)        -> recommended products and crypto limit
+  - F. Asset universe (QF1-QF3)        -> recommended products, crypto limit and region of the equities
   - B/C. Experience and knowledge (QB1, QC1, QC3) -> experienced investor or not
   - H. Market views (QH4, only for experienced investors) -> Black-Litterman views allowed or not
 Black-Litterman views and their confidence (QH5-QH6) are entered on the portfolio page. Without views, the client
@@ -89,6 +89,21 @@ UNIVERSE = ("Which asset classes are you willing to include?", options(
 CRYPTO_CHOICE = "h"
 CRYPTO_CAP = ("What is the maximum you want in crypto?", options(
     ("5%", 0.05), ("10%", 0.10), ("20%", 0.20), ("30%", 0.30), ("No explicit cap", 1.0)))
+# Region: the client's region gets at least HOME_BIAS of the equities, the rest stays worldwide (diversification)
+REGION_QUESTION = ("Where would you like to invest your equities?", options(
+    ("Mostly in Switzerland", "Switzerland"), ("Mostly in Europe", "Europe"), ("Worldwide, no preference", "World"),
+    ("Mostly in the USA", "USA")))
+HOME_BIAS = 0.5
+EQUITIES_BY_REGION = {"Switzerland": ["CSSMI.SW", "ACWI"], "Europe": ["VGK", "ACWI"], "World": ["SPY", "EFA"],
+                      "USA": ["SPY", "IWM", "EFA"]}
+# Bonds and cash in the currency of the portfolio: for a portfolio in CHF, Swiss bonds replace the US bonds
+IN_CHF = {"AGG": "CSBGC7.SW", "TLT": "CSBGC0.SW", "LQD": "CHCORP.SW", "SHY": "CSBGC3.SW"}
+
+
+def products_for(choice, region, currency):
+    """Products of an asset class chosen in QF1: equities follow the region (QF3), bonds the currency."""
+    products = EQUITIES_BY_REGION[region] if choice == "a" else UNIVERSE[1][choice][1]
+    return [IN_CHF.get(t, t) for t in products] if currency == "CHF" else list(products)
 
 # ---------- B/C. Experience and knowledge: (text, counts as experienced) ----------
 EXPERIENCE = {
@@ -112,7 +127,7 @@ RT_LABELS = ["Conservative", "Moderate-conservative", "Growth-oriented", "Aggres
 
 def single_choice_questions():
     """All single-choice questions asked to everybody, in display order: code -> (text, options)."""
-    return {**RISK_TOLERANCE, **HORIZON, **CAPACITY, **EXPERIENCE}
+    return {**RISK_TOLERANCE, **HORIZON, **CAPACITY, "QF3": REGION_QUESTION, **EXPERIENCE}
 
 
 def is_experienced(answers):
