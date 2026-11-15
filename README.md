@@ -21,8 +21,6 @@ Everything can be shown in USD or CHF. Prices are downloaded from Yahoo Finance 
 The button **Start over (new client)** in the sidebar forgets every answer and choice, so the next client
 starts from zero.
 
-**Live app:** add the address here after deployment (see "Put the app online" below).
-
 ## How the profile drives the portfolio
 
 Tolerance and capacity are kept separate, and each has **one** job:
@@ -97,24 +95,6 @@ On macOS/Linux, activate with `source .venv/bin/activate` instead. In GitHub Cod
 installs everything; run `python -m streamlit run app.py`.
 
 Tests: `python -m unittest discover -s tests -v`
-
-## Put the app online (permanent website, as in lecture LN4)
-
-1. The code must be on GitHub with `requirements.txt` at the root (already the case).
-2. Go to https://share.streamlit.io, sign in with GitHub and click **Create app** → *Yup, I have an app*.
-3. Repository `Nathchab/QARM-II`, branch `main`, main file path `app.py`. Choose the address (App URL,
-   ending in `.streamlit.app`).
-4. **Advanced settings → Python version 3.12** (the versions in `requirements.txt` were tested with it), then
-   **Deploy**. The first start takes a few minutes.
-5. In *My apps* → ⋮ → **Settings** → "Who can view this app" → "This app is public and searchable".
-
-Every push to `main` updates the website by itself. Good to know:
-
-- Each visitor has his own session: two people can use the site at the same time without seeing each other's
-  answers. **Start over (new client)** empties the session of the current visitor.
-- A free Streamlit app goes to sleep after 12 hours without visitors. The address stays the same: the next
-  visitor clicks "Yes, get this app back up!" and waits about a minute. Open the site before a presentation.
-- The first visitor of the day waits about 10 seconds while the prices are downloaded.
 
 ## Code structure
 
