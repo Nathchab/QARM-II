@@ -113,8 +113,10 @@ def recommended(profile, tickers, c, views=None):
 
 
 def client_method(profile, tickers, c):
-    """The client's portfolio: the method chosen on the portfolio page, by default our recommendation."""
-    return st.session_state.get("method") or recommended(profile, tickers, c)
+    """The client's portfolio: the method he chose on the portfolio page if it still exists (Black-Litterman
+    disappears when he removes his views), otherwise our recommendation."""
+    chosen = st.session_state.get("method")
+    return chosen if chosen in advice(profile, tickers, c)[0] else recommended(profile, tickers, c)
 
 
 YOURS, BENCHMARK_COLOR, OTHERS = "#e4572e", "#222222", "#b8b8b8"

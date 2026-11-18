@@ -23,8 +23,7 @@ st.write("What could your portfolio become, and what do you buy today?")
 methods = [m for m in METHODS if m in portfolios]
 saved = client_method(profile, tickers, c)
 col1, col2, col3 = st.columns(3)
-method = col1.selectbox("Portfolio", methods, index=methods.index(saved) if saved in methods else 0,
-                        format_func=method_label)
+method = col1.selectbox("Portfolio", methods, index=methods.index(saved), format_func=method_label)
 initial = col2.number_input(f"Initial amount ({currency})", min_value=1_000, value=100_000, step=10_000)
 monthly = col3.number_input(f"Monthly contribution ({currency})", min_value=0, value=500, step=100)
 years = col1.slider("Horizon (years)", 1, 40, HORIZON_YEARS[profile.answers["QD1"]],
@@ -77,8 +76,8 @@ if plan["prob_goal"] < 0.5:
     st.info("Your goal is reached in less than half of the futures: save more each month, wait longer, "
             "or lower the goal.")
 st.caption(f"Expected return {exp_return:.1%} per year (our forecast: market equilibrium), minus our fee of "
-           f"{MANAGEMENT_FEE:.2%}, volatility {vol:.1%}. Monthly returns are drawn from a normal distribution and are independent from "
-           "one month to the next. Amounts are not adjusted for inflation.")
+           f"{MANAGEMENT_FEE:.2%}, volatility {vol:.1%}. Monthly returns are drawn from a normal distribution and "
+           "are independent from one month to the next. Amounts are not adjusted for inflation.")
 
 # ---------- Order list ----------
 st.subheader(f"Your orders for {initial:,.0f} {currency}")
@@ -86,8 +85,8 @@ orders, cash = order_list(weights, prices.iloc[-1], initial)
 st.dataframe(orders.style.format({"Target weight": "{:.1%}", "Last price": "{:,.2f}", "Quantity": "{:,.4g}",
                                   "Amount": "{:,.0f}"}), hide_index=True)
 st.caption(f"Prices of {prices.index[-1]:%d %B %Y}. ETFs are bought in whole shares, crypto in fractions; "
-           f"{cash:,.0f} {currency} stay in cash." + (" The ETFs trade in USD: the prices are converted at the "
-                                                     "last USD/CHF rate." if currency == "CHF" else ""))
+           f"{cash:,.0f} {currency} stay in cash. Products traded in another currency (the .SW products trade in "
+           "CHF, the others in USD) are converted at the last USD/CHF rate.")
 
 # ---------- Report ----------
 report = client_report(profile, c, method_label(method), weights, exp_return, vol, currency, plan, orders, cash)

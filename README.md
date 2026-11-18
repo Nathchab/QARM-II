@@ -12,7 +12,7 @@ A Streamlit web app that works like a robo-advisor:
 4. **Your plan**: projection of the client's wealth with a monthly savings plan (5,000 simulated futures), probability
    of reaching a savings goal and of a fall larger than the loss he accepts, the orders to place (number of shares
    of each ETF), our 0.50% management fee, and a downloadable PDF report (fpdf2).
-5. **Backtest**: out-of-sample comparison of the four methods, with transaction costs, a turnover limit and
+5. **Backtest**: out-of-sample comparison of the methods, with transaction costs, a turnover limit and
    optional cost-aware optimisation (LN3), after our management fee.
 6. **Stress test**: buy-and-hold replays of 2008, 2020 and 2022, compared with the loss the client said he
    could tolerate.
@@ -28,9 +28,10 @@ Tolerance and capacity are kept separate, and each has **one** job:
 | Dimension | Questions | Used for |
 | --- | --- | --- |
 | Risk tolerance (RT, 0–100) | QE1–QE4 | risk aversion γ of the optimisers |
-| Financial capacity (0–9) | age, income, emergency savings, commitments | allocation limits |
+| Financial capacity (0–9) | age, income, emergency savings, commitments | allocation limits, largest loss |
 | Horizon and liquidity | QD1, QD2 | allocation limits |
 | Asset universe | QF1, QF2 (QF2 only if crypto is chosen) | recommended products, crypto limit |
+| Region | QF3 (Switzerland, Europe, World, USA) | equity products, at least 50% of the equities in the region |
 | Experience | QB1, QC1, QC3 | experienced investor or not |
 | Market views | QH4 (experienced only), then QH5–QH6 on the portfolio page | Black-Litterman P, Q and Ω |
 

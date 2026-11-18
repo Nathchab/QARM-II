@@ -4,7 +4,7 @@ import streamlit as st
 from src.app_helpers import (get_currency, get_profile, next_button, recommendation_summary, reset_choices,
                              show_profile_messages, tighten)
 from src.data import ASSETS, SHORT_TERM, available_assets, first_date
-from src.optimizer import check_constraints
+from src.optimizer import check_constraints, lacks_home_equity
 from src.portfolios import WINDOW
 
 profile = get_profile()
@@ -92,6 +92,10 @@ stricter = [label for key, label in [("max_equity", "equities"), ("min_bonds", "
                                       ("min_home_equity", "region")] if c[key] != rec_c[key]]
 if stricter:
     st.caption("Stricter than your profile: " + ", ".join(stricter) + ".")
+if lacks_home_equity(tickers, c):
+    st.warning(f"None of your equity products is mainly invested in {c['region']}: with the rule 'at least "
+               f"{c['min_home_equity']:.0%} of your equities in {c['region']}', your portfolio will hold no equities. "
+               "Add an equity product of this region (or click 'Back to our recommendation').")
 if any(ASSETS[t][1] == "Crypto" for t in tickers) and c["max_crypto"] == 0:
     st.info("You chose crypto products but your maximum in crypto is 0%: they will get no weight.")
 

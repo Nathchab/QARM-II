@@ -10,7 +10,8 @@ Two separate dimensions, each with its own job:
    gamma(RT) evaluated at the RT subscore of each option lies inside the interval of that option.
 
 2. Risk CAPACITY (ability: financial situation + horizon + liquidity) -> allocation limits
-   (maximum in equities, minimum in bonds, maximum in gold/commodities and crypto).
+   (maximum in equities, minimum in bonds and short-term bonds, maximum in gold/commodities and crypto)
+   and the largest loss he can afford in a bad year.
    The most restrictive source applies. Capacity does NOT change gamma: it would be counted
    twice (gamma floor + limits), and the client's tolerance would no longer matter.
 
@@ -168,8 +169,8 @@ class ClientProfile:
             self.warnings.append("You may withdraw more than 25% within 12 months: "
                                  "keep that amount in cash outside the portfolio.")
         if min_short_term > 0:
-            self.notes.append(f"You may need part of this money soon ({' and '.join(self.limit_sources['min_short_term'])}): "
-                              f"at least {min_short_term:.0%} is kept in short-term government bonds ({short}), "
+            self.notes.append(f"You may need part of this money soon "
+                              f"({' and '.join(self.limit_sources['min_short_term'])}): at least {min_short_term:.0%} is kept in short-term government bonds ({short}), "
                               f"which almost never lose value in {currency}, instead of long bonds or equities.")
         if self.region != "World":
             self.notes.append(f"You prefer {self.region} (QF3): at least {HOME_BIAS:.0%} of your equities are invested "
@@ -192,6 +193,6 @@ class ClientProfile:
             low, high = qe3_gamma_interval(a["QE3"])
             self.notes.append(f"Your answers point in different directions: your choice in QE3 alone implies "
                               f"γ between {low:.1f} and {'∞' if high == float('inf') else f'{high:.1f}'}, but your "
-                              f"four answers together give γ = {self.gamma:.1f}. You may want to review part 1. Until then we "
-                              "recommend risk parity, which does not need your risk aversion (if it respects the "
-                              "loss you can tolerate).")
+                              f"four answers together give γ = {self.gamma:.1f}. You may want to review part 1."
+                              + ("" if self.preserve_capital else " Until then we recommend risk parity, which does "
+                                 "not need your risk aversion (if it respects your loss limit)."))

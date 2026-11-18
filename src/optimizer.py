@@ -37,23 +37,44 @@ def home_row(tickers, c, extra_variables=0):
                      if ASSETS[t][1] == "Equity" else 0.0 for t in tickers] + [0.0] * extra_variables)
 
 
+def lacks_home_equity(tickers, c):
+    """True if the client has equity products, but none mainly in his region: the regional rule then forces
+    his equities to 0%."""
+    equity_rows = [r for t, r in zip(tickers, home_row(tickers, c)) if ASSETS[t][1] == "Equity"]
+    return c.get("min_home_equity", 0) > 0 and bool(equity_rows) and max(equity_rows) < 0
+
+
 def limits(tickers, c, extra_variables=0):
-    """The client's limits as a list of (row, minimum, maximum): minimum <= row @ x <= maximum."""
+    """The client's limits as a list of (name, row, minimum, maximum): minimum <= row @ x <= maximum."""
     rows, inf = class_rows(tickers, extra_variables), np.inf
-    rules = [(rows["Equity"], -inf, c["max_equity"]),  # maximum in equities
-             (rows["Bond"], c["min_bonds"], inf),      # minimum in bonds
-             (rows["Other"], -inf, c["max_other"]),    # maximum in gold and commodities
-             (rows["Crypto"], -inf, c["max_crypto"])]  # maximum in crypto
-    if c.get("min_short_term", 0) > 0:  # money that may be needed soon: minimum in short-term government bonds
-        rules.append((short_term_row(tickers, extra_variables), c["min_short_term"], inf))
+    rules = [("maximum in equities", rows["Equity"], -inf, c["max_equity"]),
+             ("minimum in bonds", rows["Bond"], c["min_bonds"], inf),
+             ("maximum in gold and commodities", rows["Other"], -inf, c["max_other"]),
+             ("maximum in crypto", rows["Crypto"], -inf, c["max_crypto"])]
+    if c.get("min_short_term", 0) > 0:  # money that may be needed soon
+        rules.append(("minimum in short-term government bonds", short_term_row(tickers, extra_variables),
+                      c["min_short_term"], inf))
     if c.get("min_home_equity", 0) > 0:  # region chosen in QF3
-        rules.append((home_row(tickers, c, extra_variables), 0, inf))
+        rules.append((f"minimum share of your equities in {c['region']}", home_row(tickers, c, extra_variables),
+                      0, inf))
     return rules
+
+
+def binding_limits(weights, c):
+    """Names of the limits on which the portfolio sits exactly. Each limit has one bound (a minimum or a maximum).
+    A bound of 0% (no bonds required, no crypto allowed) is not worth mentioning; the regional rule is written
+    'row @ x >= 0', so it is kept."""
+    found = []
+    for name, row, low, high in limits(list(weights.index), c):
+        bound = low if np.isfinite(low) else high
+        if abs(row @ weights.values - bound) <= 1e-6 and (bound != 0 or name.startswith("minimum share")):
+            found.append(name)
+    return found
 
 
 def client_constraints(tickers, c, extra_variables=0):
     """LN3 'asset class constraints' written as LinearConstraint (as in the labs)."""
-    return [LinearConstraint(row, lb=low, ub=high) for row, low, high in limits(tickers, c, extra_variables)]
+    return [LinearConstraint(row, lb=low, ub=high) for name, row, low, high in limits(tickers, c, extra_variables)]
 
 
 def weight_bounds(tickers, c):
@@ -77,15 +98,15 @@ def respects_limits(x, tickers, c, tolerance=1e-9):
     """True if the weights x are long-only, fully invested and inside the client's limits."""
     return bool(abs(np.sum(x) - 1) <= tolerance
                 and all(lo - tolerance <= w <= hi + tolerance for w, (lo, hi) in zip(x, weight_bounds(tickers, c)))
-                and all(low - tolerance <= row @ x <= high + tolerance for row, low, high in limits(tickers, c)))
+                and all(low - tolerance <= row @ x <= high + tolerance for name, row, low, high in limits(tickers, c)))
 
 
 def feasible_portfolio(tickers, c):
     """Any portfolio that respects the limits, or None if there is none.
     Found with a linear programme written as in LN3: S x <= T, sum(x) = 1, 0 <= x <= max weight."""
     rules = limits(tickers, c)
-    upper = [(row, high) for row, low, high in rules if high < np.inf]
-    lower = [(-row, -low) for row, low, high in rules if low > -np.inf]  # low <= row @ x  <=>  -row @ x <= -low
+    upper = [(row, high) for name, row, low, high in rules if high < np.inf]
+    lower = [(-row, -low) for name, row, low, high in rules if low > -np.inf]  # low <= row @ x <=> -row @ x <= -low
     S, T = zip(*upper + lower)
     result = linprog(np.zeros(len(tickers)), A_ub=S, b_ub=T, A_eq=[np.ones(len(tickers))], b_eq=[1.0],
                      bounds=weight_bounds(tickers, c))
@@ -104,7 +125,7 @@ def check_constraints(tickers, c):
     if c.get("min_short_term", 0) > 0 and not any(t in CASH_LIKE for t in tickers):
         problems.append(f"You need at least {c['min_short_term']:.0%} in short-term government bonds: keep "
                         f"{' or '.join(CASH_LIKE)}.")
-    if c.get("min_home_equity", 0) > 0 and max(home_row(tickers, c)) <= 0 < class_rows(tickers)["Equity"].sum():
+    if lacks_home_equity(tickers, c):
         problems.append(f"At least {c['min_home_equity']:.0%} of your equities must be in {c['region']}: add an "
                         "equity product of this region.")
     if room["Bond"] < c["min_bonds"] - 1e-9:

@@ -127,7 +127,7 @@ def load_prices(currency="USD"):
 
 def monthly_returns(prices):
     """Monthly simple returns (NaN before a product exists)."""
-    return prices.resample("ME").last().pct_change()
+    return prices.resample("ME").last().pct_change(fill_method=None)
 
 
 def risk_free(currency="USD"):

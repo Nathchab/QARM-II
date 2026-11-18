@@ -4,7 +4,7 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from src.optimizer import (check_constraints, frontier, gamma_for_max_volatility, mean_variance, mean_variance_with_costs,
+from src.optimizer import (binding_limits, lacks_home_equity, check_constraints, frontier, gamma_for_max_volatility, mean_variance, mean_variance_with_costs,
                            portfolio_stats, resampled, respects_limits, risk_contributions, risk_parity, weight_bounds)
 
 NO_LIMIT = dict(max_equity=1., min_bonds=0., max_other=1., max_crypto=0., max_weight_per_asset=1.)
@@ -32,6 +32,7 @@ class MeanVarianceTests(unittest.TestCase):
         w = mean_variance(mu, cov, .2, c)  # a very tolerant client: every limit binds
         np.testing.assert_allclose(w, [.2, .3, .4, .1], atol=1e-6)
         self.assertTrue(respects_limits(w.values, tickers, c))
+        self.assertEqual(binding_limits(w, c), ["maximum in equities", "minimum in bonds", "maximum in gold and commodities"])
 
     def test_minimum_in_short_term_treasuries(self):
         tickers = ["SPY", "TLT", "SHY"]
@@ -51,6 +52,8 @@ class MeanVarianceTests(unittest.TestCase):
         swiss = w["CSSMI.SW"] + .02 * w["ACWI"]  # ACWI is about 2% Swiss
         self.assertGreaterEqual(swiss, .5 * (w["CSSMI.SW"] + w["ACWI"]) - 1e-6)
         self.assertLess(mean_variance(mu, cov, 1., NO_LIMIT)["CSSMI.SW"], w["CSSMI.SW"])  # without the rule: less
+        self.assertFalse(lacks_home_equity(tickers, c))
+        self.assertTrue(lacks_home_equity(["ACWI", "CSBGC7.SW"], c))  # only the world fund: no Swiss equities
 
     def test_same_units_for_mu_and_cov_do_not_matter(self):
         mu = pd.Series([.08, .03, .05], index=["SPY", "AGG", "GLD"])

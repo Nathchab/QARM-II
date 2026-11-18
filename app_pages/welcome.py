@@ -36,8 +36,8 @@ st.header("Our principles")
 col1, col2 = st.columns(2)
 col1.markdown("""
 - **Your limits come first.** In a bad year (5% chance) the recommended portfolio should not lose more than
-  what you told us you can tolerate (we warn you if no
-  portfolio can promise that), and money you may need soon is kept in short-term Treasuries.
+  what you can tolerate and afford (we warn you if no portfolio can promise that), and money you may need soon
+  is kept in short-term government bonds.
 - **One prudent forecast.** We do not assume that the last 5 years will repeat: expected returns come from
   the market equilibrium (what the market as a whole expects).
 """)

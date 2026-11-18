@@ -37,11 +37,12 @@ st.markdown("""
   at most |limit| / 1.645 (5% → 3.0%, 10% → 6.1%, 15% → 9.1%, 20% → 12.2%, 30% → 18.2%). If the portfolio of γ
   is riskier, we raise γ to the smallest value that respects the limit ("targeting a volatility", solved by
   bisection). The capacity limit is needed because a minimum in bonds does not limit the risk by itself: without
-  it, a bold client with a low capacity got 40% in 20-year bonds and a volatility of 12.6%, almost as much as a
-  client with a high capacity. If even the safest portfolio inside the limits is too risky, we recommend that
-  safest portfolio and say so. Over the past 15 years, the 12-month loss of the most prudent portfolios was
-  larger than their 5% limit about 5% of the time (2022, when equities and bonds fell together): it is a limit
-  with a 95% confidence, not a guarantee.
+  it, a bold client with a low capacity got 40% in 20-year bonds and a volatility of 12.5%, almost as much as a
+  client with a high capacity (14.9%); with it, 6.1%. If even the safest portfolio inside the limits is too risky, we recommend that
+  safest portfolio and say so. In the backtests on real prices (2011-2026 in USD, 2019-2026 in CHF), the
+  12-month loss of the clients with a 5% limit was larger than 5% in 0% to 8% of the periods, depending on the
+  region and the currency (mostly 2022, when equities and bonds fell together); for the other clients in 0% to
+  2%. It is a limit with a 95% confidence, not a guarantee.
 - **Region (QF3) and currency.** Equities follow the region the client prefers (Switzerland: SMI, Swiss mid caps
   + world fund ACWI; Europe: VGK + ACWI; USA: S&P 500, small caps + EFA; World: S&P 500 + EFA), and **at least
   50% of the equities** must be in that region, looking through the funds (ACWI is about 2% Swiss). The other half

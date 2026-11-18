@@ -11,8 +11,8 @@ from src.app_helpers import (explain, get_benchmark, get_choices, get_currency, 
 from src.black_litterman import (CONFIDENCE_LEVELS, DELTA, EXTREME_VIEW, MARKET_PORTFOLIO, MAX_VIEWS,
                                   posterior_returns, prior_returns, restrict_views, view_check, view_problems)
 from src.data import ASSETS
-from src.optimizer import (beta, class_exposures, frontier, home_row, portfolio_stats, region_exposures,
-                           risk_contributions, short_term_row, tracking_error)
+from src.optimizer import (beta, binding_limits, class_exposures, frontier, portfolio_stats, region_exposures,
+                           risk_contributions, tracking_error)
 from src.planning import MANAGEMENT_FEE
 from src.portfolios import METHODS, WHY, WINDOW, bad_year_loss, dominated_by, estimate, recommended_method
 
@@ -126,7 +126,8 @@ if method in ("Equilibrium", "Black-Litterman"):
     st.write("**Where do the expected returns come from?** Not from the last 5 years: their average is a very noisy "
              "guess of the future. We use the **market equilibrium** πᵢ = r_f + δ·cov(rᵢ, r_market), the returns "
              "that make the market portfolio optimal: a product is expected to earn more only if it moves with the "
-             "market as a whole. Then the mean-variance optimiser (Markowitz) chooses the best mix for your γ and your limits."
+             "market as a whole. Then the mean-variance optimiser (Markowitz) chooses the best mix for your γ "
+             "and your limits."
              + (" Black-Litterman moves π towards your views." if method == "Black-Litterman" else ""))
     with st.expander("See the equilibrium returns"):
         st.dataframe(pd.DataFrame({
@@ -178,15 +179,7 @@ col1.metric("In equities", f"{exposure['Equity']:.0%}", help=f"Your maximum: {c[
 col2.metric("In bonds", f"{exposure['Bond']:.0%}", help=f"Your minimum: {c['min_bonds']:.0%}")
 col3.metric("Largest product", f"{weights.max():.0%}")
 col4.metric("Effective number of products", f"{1 / (weights @ weights):.1f}", help="1 / Σ wᵢ²")
-# A limit is binding when the portfolio sits exactly on it (a limit of 0% is not worth mentioning)
-LIMITS = {"max_equity": ("Equity", "maximum in equities"), "min_bonds": ("Bond", "minimum in bonds"),
-          "max_other": ("Other", "maximum in gold and commodities"), "max_crypto": ("Crypto", "maximum in crypto")}
-binding = [name for key, (kind, name) in LIMITS.items()
-           if abs(exposure[kind] - c[key]) <= 1e-6 and not (key in ("min_bonds", "max_crypto") and c[key] == 0)]
-if c.get("min_short_term", 0) > 0 and abs(short_term_row(tickers) @ weights - c["min_short_term"]) <= 1e-6:
-    binding.append("minimum in short-term government bonds")
-if c.get("min_home_equity", 0) > 0 and abs(home_row(tickers, c) @ weights) <= 1e-6:
-    binding.append(f"minimum share of your equities in {c['region']}")
+binding = binding_limits(weights, c)  # limits on which the portfolio sits exactly
 if binding and method not in ("Risk parity (ERC)", "Minimum variance"):
     st.caption("Your limits are binding: " + ", ".join(binding) + ". Without them, the "
                "optimiser would choose a different mix for your γ.")
@@ -298,12 +291,11 @@ st.caption(f"Benchmark: {benchmark_name}. Beta and tracking error on the last {W
 explain(profile, "Each column is one method (ours is highlighted): the weights of each product, then its numbers. "
                  "**Tracking error**: how far the portfolio can drift away from the benchmark in a year.")
 
-# ---------- Composition map (lab LN3): sensitivity to gamma ----------
+# ---------- Composition map: sensitivity to gamma ----------
 if not front.empty:
     st.subheader("What if your γ was different?")
-    st.write("Composition map: the optimal weights for every γ, with your limits and our forecast "
-             "(the market equilibrium method; with a very high γ it becomes the minimum variance portfolio). "
-             "The dashed line is your γ.")
+    st.write("Composition map: the optimal mean-variance weights for every γ, with your limits and our forecast "
+             "(with a very high γ it becomes the minimum variance portfolio). The dashed line is the γ we use.")
     area = px.area(front, x="Gamma", y=list(mu.index), log_x=True)
     area.add_vline(x=min(gamma, front["Gamma"].max()), line_dash="dash")
     area.update_layout(yaxis_title="Weight", yaxis_tickformat=".0%", xaxis_title="γ (risk aversion)")
