@@ -151,7 +151,7 @@ col1.metric("Expected return", f"{ret:.1%}", help="With our forecast (market equ
 col2.metric("Volatility", f"{vol:.1%}")
 col3.metric("Sharpe ratio", f"{(ret - rf_now) / vol:.2f}" if vol > 0 else "–")
 col4.metric("Beta vs benchmark", f"{beta(past @ weights, benchmark_returns):.2f}",
-            help=f"Benchmark: {benchmark_name} (you can change it on the backtest page)")
+            help=f"Benchmark: {benchmark_name}. You can change it on the backtest page.")
 col1, col2, col3, col4 = st.columns(4)
 col1.metric("In equities", f"{exposure['Equity']:.0%}", help=f"Your maximum: {c['max_equity']:.0%}")
 col2.metric("In bonds", f"{exposure['Bond']:.0%}", help=f"Your minimum: {c['min_bonds']:.0%}")

@@ -207,10 +207,14 @@ def mean_variance_with_costs(mu, cov, risk_aversion, c, x0, cost, max_turnover=2
     gamma = 1 / risk_aversion
     costs = np.full(n, cost)
 
+    # Same scaling, gradient and precision as mean_variance: without them SLSQP stops after a few steps, close to
+    # x0, and the portfolio trades much less than it should
+    scale = max(np.abs(cov.values).max(), gamma * np.abs(mu.values).max())
     Q = np.zeros((3 * n, 3 * n))
-    Q[:n, :n] = cov.values                                    # only x has risk
-    R = gamma * np.concatenate([mu.values, -costs, -costs])   # expected return minus costs
+    Q[:n, :n] = cov.values / scale                                    # only x has risk
+    R = gamma * np.concatenate([mu.values, -costs, -costs]) / scale   # expected return minus costs
     objective = lambda X: 0.5 * X @ Q @ X - X @ R
+    gradient = lambda X: Q @ X - R
 
     I = np.eye(n)
     rules = [
@@ -220,7 +224,10 @@ def mean_variance_with_costs(mu, cov, risk_aversion, c, x0, cost, max_turnover=2
     ] + client_constraints(tickers, c, extra_variables=2 * n)
     bounds = weight_bounds(tickers, c) + [(0, 1)] * (2 * n)  # 0 <= dx_minus, dx_plus <= 1
     start = np.concatenate([x0, np.zeros(2 * n)])
-    res = minimize(objective, start, bounds=bounds, constraints=rules, method="SLSQP")
+    res = minimize(objective, start, jac=gradient, bounds=bounds, constraints=rules, method="SLSQP",
+                   options={"ftol": 1e-12, "maxiter": 2000})
+    if not res.success:  # we prefer an error message to a wrong portfolio
+        raise RuntimeError(f"Mean-variance with costs SLSQP failed (status {res.status}): {res.message}")
     return clean(res.x[:n], tickers)
 
 

@@ -157,10 +157,10 @@ def get_valid_portfolios(profile, tickers, c):
 
 
 def recommendation_summary(profile, tickers, c):
-    """One sentence: what our recommendation gives for this client's gamma and limits (the client has not
-    entered views yet). None if it cannot be calculated."""
+    """One sentence: what our recommendation gives for this client's gamma, limits and views (the same portfolio
+    as on the portfolio page). None if it cannot be calculated."""
     try:
-        portfolios, errors, gamma, forecast, cov = advice(profile, tickers, c, views=())
+        portfolios, errors, gamma, forecast, cov = advice(profile, tickers, c)
         best = recommended_method(profile, portfolios, forecast, cov)
         w = portfolios[best]
     except Exception:  # missing data or failed optimisation: no sentence (the pages show their own messages)
@@ -186,7 +186,7 @@ def loss_limit_note(profile, gamma, loss, currency, method):
         return (f"Even the safest portfolio within your limits could lose about {-loss:.0%} in a bad year, more "
                 f"than the {-profile.max_loss:.0%} {profile.loss_reason}: we recommend this safest portfolio "
                 f"(minimum risk). {advice}")
-    if gamma > profile.gamma + 1e-6 and method != "Minimum variance":  # minimum variance does not use gamma
+    if gamma > profile.gamma + 1e-6 and method not in ("Minimum variance", "Risk parity (ERC)"):  # no gamma there
         return (f"Your answers give γ = {profile.gamma:.2f}, but with it the portfolio could lose more than "
                 f"{-profile.max_loss:.0%} in a bad year, the loss {profile.loss_reason}. We use γ = {gamma:.2f}: "
                 "the closest risk aversion that respects this limit.")

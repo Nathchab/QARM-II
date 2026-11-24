@@ -39,11 +39,19 @@ contribution = col3.number_input(f"Contribution ({currency})", min_value=0, valu
                                  key="plan_contribution")
 years = col1.slider("Horizon (years)", 1, 40, inputs.get("years", HORIZON_YEARS[profile.answers["QD1"]]),
                     help="Default: your answer to QD1 (when you need the money).", key="plan_years")
-goal = col2.number_input(f"Your goal ({currency})", min_value=1_000, value=inputs.get("goal", 200_000), step=10_000,
-                         key="plan_goal")
 frequency = col3.selectbox("Contribution frequency", list(FREQUENCIES), key="plan_frequency",
                            index=list(FREQUENCIES).index(inputs.get("frequency", "Monthly")))
 every, per = FREQUENCIES[frequency]
+# Default goal: get back at least what you pay in (rounded up); a fixed 200,000 was out of reach for short horizons
+default_goal = int(np.ceil(paid_in(initial, contribution, every, 12 * years) / 10_000) * 10_000)
+goal = col2.number_input(f"Your goal ({currency})", min_value=1_000, value=inputs.get("goal", default_goal),
+                         step=10_000, key="plan_goal", help="Default: what you pay in, rounded up (get your money back)")
+# One transaction cost for the whole app: the backtest page uses (and can change) the same one
+cost_bps = col1.slider("Transaction cost (bp of each purchase)", 0, 100,
+                       st.session_state.get("cost_bps", round(TRADING_COST * 10_000)), key="plan_cost",
+                       help="10 bp = 0.10% of every amount you invest. Typical for ETFs: 5 to 20 bp. The same cost is "
+                            "used in the backtest.")
+st.session_state["cost_bps"] = cost_bps
 st.session_state["plan_inputs"] = {"initial": initial, "contribution": contribution, "frequency": frequency,
                                    "years": years, "goal": goal}
 
@@ -53,8 +61,8 @@ st.session_state["plan_inputs"] = {"initial": initial, "contribution": contribut
 weights = portfolios[method]
 exp_return, vol = portfolio_stats(weights, forecast, cov)
 # Our fee is taken from the return every month; each purchase (the initial amount and every contribution) pays the
-# transaction cost chosen on the backtest page (default 10 bp). The ETF costs (TER) are already in the ETF prices.
-cost = st.session_state.get("bt_settings", {}).get("cost_bps", round(TRADING_COST * 10_000)) / 10_000
+# transaction cost chosen above (default 10 bp). The ETF costs (TER) are already in the ETF prices.
+cost = cost_bps / 10_000
 wealth, growth = simulate_wealth(exp_return - MANAGEMENT_FEE, vol, years, initial, contribution, every, cost)
 # The same futures without our fee, and without fee nor costs: what they cost the client (same random draws)
 no_fee = simulate_wealth(exp_return, vol, years, initial, contribution, every, cost)[0][:, -1]
@@ -69,7 +77,7 @@ plan = {"initial": initial, "contribution": contribution, "per": per, "years": y
         "fee_cost": np.median(no_fee - final), "trading_cost": np.median(free - no_fee),
         "prob_loss": (worst_drawdowns(growth) < -loss_limit).mean()}
 
-st.subheader(f"Your wealth in {years} years")
+st.subheader(f"Your wealth in {years} year{'s' if years > 1 else ''}")
 col1, col2, col3, col4 = st.columns(4)
 col1.metric("Total paid in", f"{total_paid:,.0f} {currency}")
 col2.metric("Pessimistic (5%)", f"{plan['p5']:,.0f} {currency}", help="5% of the futures end lower")
@@ -102,17 +110,16 @@ if plan["prob_goal"] < 0.5:
                "or lower the goal.")
 
 # ---------- What fees and costs take over the horizon ----------
-st.subheader(f"What fees and costs take over {years} years")
+st.subheader(f"What fees and costs take over {years} year{'s' if years > 1 else ''}")
 col1, col2, col3 = st.columns(3)
 col1.metric(f"Our fee ({MANAGEMENT_FEE:.2%} per year)", f"−{plan['fee_cost']:,.0f} {currency}",
             help="Median difference between the final wealth with and without our fee. It grows with time, because "
                  "the fee is taken every month and the money it takes no longer earns a return.")
 col2.metric(f"Transaction costs ({cost * 10_000:.0f} bp)", f"−{plan['trading_cost']:,.0f} {currency}",
-            help="Paid on each purchase: the initial amount and every contribution. You can change the cost on the "
-                 "backtest page.")
+            help="Paid on each purchase: the initial amount and every contribution. You can change the cost above.")
 col3.metric("ETF costs (TER)", "in the prices",
-            help="Each ETF takes its own yearly cost (TER) from its value every day, so the prices we use are already "
-                 "after it, in the expected returns and in the backtest.")
+            help="Each ETF takes its own yearly cost (TER) from its value every day, so its price is already after "
+                 "it: the past returns and the backtest include it.")
 st.caption(f"Already taken out of the futures above. Expected return {exp_return:.1%} per year (our forecast) "
            f"minus our fee of {MANAGEMENT_FEE:.2%}, volatility {vol:.1%}. The costs of rebalancing are not included: "
            "the portfolio trades only a few percent of its value per year, so they are very small (see the "

@@ -97,9 +97,9 @@ def show_result():
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Risk tolerance (RT)", f"{profile.rt:.1f} / 100")
     col2.metric("Risk aversion γ", f"{profile.gamma:.2f}")
-    col3.metric("Financial capacity", profile.capacity_label,
-                help=f"Score {profile.capacity_score}/9 (Low 0–2, Limited 3–4, Moderate 5–6, High 7–9)"
-                     + (". Lowered to Limited because of low savings or heavy commitments." if profile.safeguard else "."))
+    col3.metric("Financial capacity", profile.capacity_label, help=profile.capacity_explanation,
+                delta=f"lowered, score {profile.capacity_score}/9" if profile.safeguard else None, delta_color="off",
+                delta_arrow="off")
     col4.metric("Maximum in equities", f"{c['max_equity']:.0%}")
     tickers = [t for t in profile.recommended_assets if t in available_assets()]
     summary = recommendation_summary(profile, tickers, c)
@@ -116,10 +116,12 @@ def show_result():
     st.dataframe(pd.DataFrame({
         "Limit": ["Maximum in equities", "Minimum in bonds", "Minimum in short-term government bonds",
                   "Maximum in gold and commodities", "Maximum in crypto", "Maximum per product",
-                  f"Minimum share of your equities in {profile.region}", "Largest loss in a bad year (5% chance)"],
+                  f"Minimum share of your equities in {profile.region}" if profile.region != "World"
+                  else "Minimum share of your equities in one region", "Largest loss in a bad year (5% chance)"],
         "Value": [f"{c[k]:.0%}" for k in ("max_equity", "min_bonds", "min_short_term", "max_other", "max_crypto",
-                                          "max_weight_per_asset", "min_home_equity")]
-        + ["no limit" if profile.max_loss is None else f"{-profile.max_loss:.0%}"],
+                                          "max_weight_per_asset")]
+        + [f"{c['min_home_equity']:.0%}" if profile.region != "World" else "none",
+           "no limit" if profile.max_loss is None else f"{-profile.max_loss:.0%}"],
         "Set by": [", ".join(profile.limit_sources["max_equity"]),
                    ", ".join(profile.limit_sources["min_bonds"]) or "no minimum",
                    ", ".join(profile.limit_sources["min_short_term"]) or "no money needed soon",

@@ -62,21 +62,8 @@ st.subheader("Your portfolio in this crisis")
 col1, col2, col3 = st.columns(3)
 col1.metric("Worst loss", f"{loss:.1%}", f"{loss - bench_loss:+.1%} vs benchmark ({bench_loss:.1%})")
 col2.metric(f"Worst loss in {currency}", f"{loss * amount:,.0f}")
-col3.metric("Time to get your money back", "not yet" if months is None else f"{months} months")
-
-if profile.qe2_loss is None:
-    st.write(f"This portfolio lost {-loss:.1%}. You told us (QE2) you could tolerate a temporary loss of more than 30%.")
-elif loss < profile.qe2_loss:
-    st.warning(f"This portfolio lost {-loss:.1%}, more than the {-profile.qe2_loss:.0%} you told us (QE2) you could "
-               "tolerate without abandoning the strategy. "
-               + ("Our loss limit covers a bad year with a 5% chance; a crisis like this one is rarer and deeper. "
-                  "Would you have stayed invested? If not, make your limits stricter on step 2."
-                  if method == recommended(profile, tickers, c) else
-                  "Would you have stayed invested? Our recommended portfolio is built to respect your loss limit."),
-               icon=":material/warning:")
-else:
-    st.success(f"This portfolio lost {-loss:.1%}, within the {-profile.qe2_loss:.0%} you told us (QE2) you could "
-               "tolerate.", icon=":material/check_circle:")
+col3.metric("Time to get your money back", "no loss" if loss >= -0.0005 else "not yet" if months is None
+            else f"{months} months")
 
 # Products that did not exist yet: an older fund on the same market replaces them, otherwise they are kept as cash
 young = too_young(prices, portfolios[method], start)
@@ -84,10 +71,25 @@ replaced = [f"{t} by {proxy}" for t, proxy in young.items() if proxy]
 cash = sum(portfolios[method][t] for t, proxy in young.items() if not proxy)
 if replaced:
     st.caption("Did not exist yet, replaced by an older fund on the same market: " + ", ".join(replaced) + ".")
-if cash > 0.25:
+if cash > 0.25:  # the replay says little about this portfolio: no verdict
     st.warning(f"{cash:.0%} of this portfolio did not exist yet at the start of this crisis and is counted as cash: "
-               "the real loss would have been different. Look at a more recent crisis.")
-elif cash > 0:
+               "the real loss would have been different. Look at a more recent crisis.", icon=":material/warning:")
+elif loss >= -0.0005:
+    st.success("This portfolio did not lose money in this crisis.", icon=":material/check_circle:")
+elif profile.qe2_loss is None:
+    st.write(f"This portfolio lost {-loss:.1%}. You told us (QE2) you could tolerate a temporary loss of more than 30%.")
+elif loss < profile.qe2_loss:
+    st.warning(f"This portfolio lost {-loss:.1%}, more than the {-profile.qe2_loss:.0%} you told us (QE2) you could "
+               "tolerate without abandoning the strategy. "
+               + ("Our loss limit covers a bad year with a 5% chance; a crisis like this one is rarer and deeper. "
+                  "Would you have stayed invested? If not, make your limits stricter on step 2."
+                  if method == rec else
+                  "Would you have stayed invested? Our recommended portfolio is built to respect your loss limit."),
+               icon=":material/warning:")
+else:
+    st.success(f"This portfolio lost {-loss:.1%}, within the {-profile.qe2_loss:.0%} you told us (QE2) you could "
+               "tolerate.", icon=":material/check_circle:")
+if 0 < cash <= 0.25:
     st.caption(f"{cash:.0%} of this portfolio did not exist yet and is counted as cash.")
 
 # ---------- All crises, all portfolios ----------
@@ -97,7 +99,7 @@ for name in names:
     row = {}
     for crisis_name, (s, e, _) in CRISES.items():
         l, m = crisis_summary(prices, portfolios[name], s, e)
-        row[crisis_name] = ("no loss" if l >= 0 else f"{l:.1%}, " + ("not recovered yet" if m is None
+        row[crisis_name] = ("no loss" if l >= -0.0005 else f"{l:.1%}, " + ("not recovered yet" if m is None
                                                                      else f"back in {m} months"))
     rows[label(name)] = row
 st.dataframe(pd.DataFrame(rows).T.style.set_properties(subset=pd.IndexSlice[[yours], :], **HIGHLIGHT), height="content")

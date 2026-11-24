@@ -4,8 +4,9 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from src.optimizer import (binding_limits, lacks_home_equity, check_constraints, frontier, gamma_for_max_volatility, mean_variance, mean_variance_with_costs,
-                           portfolio_stats, resampled, respects_limits, risk_contributions, risk_parity, weight_bounds)
+from src.optimizer import (binding_limits, check_constraints, frontier, gamma_for_max_volatility, lacks_home_equity,
+                           mean_variance, mean_variance_with_costs, portfolio_stats, resampled, respects_limits,
+                           risk_contributions, risk_parity, weight_bounds)
 
 NO_LIMIT = dict(max_equity=1., min_bonds=0., max_other=1., max_crypto=0., max_weight_per_asset=1.)
 
@@ -109,6 +110,18 @@ class TransactionCostTests(unittest.TestCase):
     def test_without_costs_we_go_to_the_mean_variance_portfolio(self):
         w = mean_variance_with_costs(self.mu, self.cov, 3., NO_LIMIT, self.x0, cost=0.)
         np.testing.assert_allclose(w, self.target, atol=1e-3)
+
+    def test_realistic_small_numbers_still_reach_the_optimum(self):
+        """Bug found in the backtest: with real-size inputs (variances ~0.001) the solver stopped close to x0."""
+        tickers = ["SPY", "EFA", "AGG", "SHY", "GLD"]
+        vol = np.array([.15, .16, .05, .015, .14])
+        corr = np.full((5, 5), .3) + np.eye(5) * .7
+        cov = pd.DataFrame(np.outer(vol, vol) * corr, index=tickers, columns=tickers)
+        mu = pd.Series([.065, .068, .045, .04, .05], index=tickers)
+        target = mean_variance(mu, cov, 3.5, NO_LIMIT)
+        for x0 in [np.full(5, .2), np.array([0, 0, 0, 1., 0])]:
+            w = mean_variance_with_costs(mu, cov, 3.5, NO_LIMIT, x0, cost=0.)
+            np.testing.assert_allclose(w, target, atol=1e-4)
 
     def test_costs_reduce_trading_and_very_high_costs_stop_it(self):
         cheap = mean_variance_with_costs(self.mu, self.cov, 3., NO_LIMIT, self.x0, cost=.01)

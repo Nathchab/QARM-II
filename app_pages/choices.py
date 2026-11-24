@@ -68,7 +68,8 @@ c = {
                              1, saved_c["min_short_term"], 5),
     "max_other": slider(col1, "Maximum in gold and commodities", "max_other", 0, rec_c["max_other"],
                         saved_c["max_other"], 5),
-    "max_crypto": slider(col2, "Maximum in crypto", "max_crypto", 0, rec_c["max_crypto"], saved_c["max_crypto"], 1),
+    "max_crypto": slider(col2, "Maximum in crypto", "max_crypto", 0, rec_c["max_crypto"], saved_c["max_crypto"], 1)
+    if rec_c["max_crypto"] > 0 else 0.0,  # crypto not allowed: already said above, no fixed "0%" line
     "max_weight_per_asset": slider(col1, "Maximum per product", "max_weight", 0.05, rec_c["max_weight_per_asset"],
                                    saved_c["max_weight_per_asset"], 5),
 }

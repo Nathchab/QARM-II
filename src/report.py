@@ -165,7 +165,7 @@ def client_report(profile, c, method, weights, exp_return, vol, currency, plan, 
         limits.append(f"at least {c['min_home_equity']:.0%} of your equities in {c['region']}")
     pdf.key_values([
         ("Risk tolerance", f"{profile.rt:.0f}/100, {profile.label} (risk aversion gamma = {profile.gamma:.2f})"),
-        ("Financial capacity", f"{profile.capacity_label} ({profile.capacity_score}/9)"),
+        ("Financial capacity", f"{profile.capacity_label}. {profile.capacity_explanation}"),
         ("Loss limit in a bad year", "none" if profile.max_loss is None
          else f"{-profile.max_loss:.0%}, the loss {profile.loss_reason}"),
         ("Your limits", "; ".join(limits)),

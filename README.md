@@ -11,7 +11,8 @@ A Streamlit web app that works like a robo-advisor:
    tracking error and a γ composition map.
 4. **Your plan**: projection of the client's wealth with a savings plan (monthly, quarterly, semi-annual or annual contributions; 5,000 simulated futures), probability
    of reaching a savings goal and of a fall larger than the loss he accepts, the orders to place (number of shares
-   of each ETF), our 0.50% management fee, and a downloadable PDF report (fpdf2).
+   of each ETF), what our 0.50% management fee and the transaction costs (chosen on the page, shared with the
+   backtest) take over the horizon, and a downloadable PDF report (fpdf2). ETF costs (TER) are already in the prices.
 5. **Backtest**: out-of-sample comparison of the methods, with transaction costs, a turnover limit and
    optional cost-aware optimisation (LN3). Costs are paid in the month of each trade (the first month pays for the
    initial purchase) and our fee every month; the page shows the return before costs and fee, the costs, the fee

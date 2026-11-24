@@ -108,6 +108,14 @@ class ClientProfile:
         self.capacity_score = capacity_score(a)
         (self.capacity_label, cap_equity, cap_bonds, max_other, cap_crypto, cap_loss), self.safeguard = \
             capacity_tier(self.capacity_score, a)
+        # One sentence for the client: his score, its tier, and why it was lowered (if it was)
+        score_tier = capacity_tier(self.capacity_score, {"savings": "b", "commitments": "a"})[0][0]
+        reasons = [why for why, on in [("your emergency savings cover less than 3 months", a["savings"] == "a"),
+                                       ("you have significant obligations", a["commitments"] == "c")] if on]
+        self.capacity_explanation = (f"Score {self.capacity_score}/9, which gives {score_tier} (Low 0–2, Limited 3–4, "
+                                     "Moderate 5–6, High 7–9)"
+                                     + (f"; lowered to Limited because {' and '.join(reasons)}." if self.safeguard
+                                        else "."))
         # Loss limit of the portfolio in a bad year: what he can tolerate (QE2) or what he can afford (capacity),
         # the stricter of the two. loss_reason completes the sentence "... the 10% <loss_reason>".
         losses = {"you can tolerate (QE2)": self.qe2_loss,
@@ -169,15 +177,15 @@ class ClientProfile:
             self.warnings.append("You may withdraw more than 25% within 12 months: "
                                  "keep that amount in cash outside the portfolio.")
         if min_short_term > 0:
-            self.notes.append(f"You may need part of this money soon "
-                              f"({' and '.join(self.limit_sources['min_short_term'])}): at least {min_short_term:.0%} is kept in short-term government bonds ({short}), "
-                              f"which almost never lose value in {currency}, instead of long bonds or equities.")
+            self.notes.append(f"Because of {' and '.join(self.limit_sources['min_short_term'])}, you may need part of "
+                              f"this money soon: at least {min_short_term:.0%} is kept in short-term government bonds "
+                              f"({short}), which almost never lose value in {currency}, instead of long bonds or equities.")
         if self.region != "World":
             self.notes.append(f"You prefer {self.region} (QF3): at least {HOME_BIAS:.0%} of your equities are invested "
                               "there, the rest stays worldwide, because one region alone is less diversified.")
         if self.safeguard:
-            self.notes.append("Because of low savings or heavy commitments, your capacity is treated as "
-                              "'Limited' at most.")
+            self.notes.append(f"Your capacity score ({self.capacity_score}/9) gives {score_tier}, but we lower it to "
+                              f"Limited because {' and '.join(reasons)}: a loss would be harder to absorb.")
         if self.rt > 50 and max_equity <= 0.5:
             self.notes.append(f"Your risk tolerance ({self.label}) is higher than what your situation allows: "
                               f"equities are limited to {max_equity:.0%} by "

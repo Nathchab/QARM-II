@@ -33,7 +33,9 @@ last = returns.index[-1].date()
 # Every widget has a key: Streamlit then keeps exactly what the client chose. Without a key, a widget whose default
 # changes (here: the saved settings) is replaced by a new one and the client's last change is lost.
 s = st.session_state.get("bt_settings", {"period": (first, last), "rebalancing": "Every 3 months",
-                                          "cost_bps": round(TRADING_COST * 10_000), "cost_aware": True, "max_turnover": 200})
+                                          "cost_aware": True, "max_turnover": 200})
+# One transaction cost for the whole app: the plan page uses (and can change) the same one
+s["cost_bps"] = st.session_state.get("cost_bps", round(TRADING_COST * 10_000))
 period = (max(s["period"][0], first), min(s["period"][1], last))
 if period[0] >= period[1]:  # the saved period does not exist for these products: back to the full history
     period = (first, last)
@@ -55,8 +57,9 @@ with st.form("settings"):
     st.form_submit_button("Run the backtest", type="primary", icon=":material/play_arrow:")
 
 st.session_state["benchmark"] = benchmark_name
-st.session_state["bt_settings"] = {"period": period, "rebalancing": rebalancing, "cost_bps": cost_bps,
-                                   "cost_aware": cost_aware, "max_turnover": max_turnover}
+st.session_state["bt_settings"] = {"period": period, "rebalancing": rebalancing, "cost_aware": cost_aware,
+                                   "max_turnover": max_turnover}
+st.session_state["cost_bps"] = cost_bps
 
 
 @st.cache_data(show_spinner=False, max_entries=100)
@@ -131,7 +134,8 @@ col4.metric("After costs and fee", f"{mine_row['Annual return after costs and fe
             help="What you would have earned per year: the number used everywhere else on this page")
 st.caption(f"Your portfolio traded on average {mine_row['Turnover per year']:.0%} of its value per year after the "
            f"initial purchase, so with a cost of {cost_bps} bp it paid about "
-           f"{mine_row['Transaction costs per year']:.2%} per year in transaction costs. Costs and fee compound "
+           f"{mine_row['Transaction costs per year']:.2%} per year in transaction costs (the initial purchase "
+           "included). Costs and fee compound "
            "over time, so the four numbers do not add up exactly.")
 explain(profile, "**When are the costs taken?** Transaction costs are taken in the month when the portfolio trades: "
                  "at the start (buying the whole portfolio) and at each rebalancing, equal to the cost × the amount "
