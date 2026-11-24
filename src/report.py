@@ -225,6 +225,10 @@ def client_report(profile, c, method, weights, exp_return, vol, currency, plan, 
         (f"Chance to reach {plan['goal']:,.0f} {currency}", f"{plan['prob_goal']:.0%}"),
         (f"Chance of a fall of more than {plan['loss_limit']:.0%}",
          f"{plan['prob_loss']:.0%} (at some point, from a previous peak)"),
+        (f"Our fee over {plan['years']} years", f"about {plan['fee_cost']:,.0f} {currency} ({MANAGEMENT_FEE:.2%} "
+                                                 "per year, already taken out above)"),
+        ("Transaction costs", f"about {plan['trading_cost']:,.0f} {currency} ({plan['cost_bps']:.0f} bp on each "
+                              "purchase); the ETF costs (TER) are already in the ETF prices"),
     ], label_width=70)
 
     # ---------- 4. Orders ----------

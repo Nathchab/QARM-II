@@ -6,8 +6,8 @@ import streamlit as st
 from src.app_helpers import (client_method, get_choices, get_currency, get_data, get_profile, get_valid_portfolios,
                              method_label, recommended)
 from src.optimizer import portfolio_stats
-from src.planning import (FREQUENCIES, HORIZON_YEARS, MANAGEMENT_FEE, order_list, paid_in, simulate_wealth,
-                          worst_drawdowns)
+from src.planning import (FREQUENCIES, HORIZON_YEARS, MANAGEMENT_FEE, TRADING_COST, order_list, paid_in,
+                          simulate_wealth, worst_drawdowns)
 from src.portfolios import METHODS
 from src.report import client_report
 from src.style import ACCENT, BENCHMARK_COLOR, chart, explain, nav_buttons, page_header
@@ -52,14 +52,21 @@ st.session_state["plan_inputs"] = {"initial": initial, "contribution": contribut
 # most prudent estimate: we do not project the returns of the last 5 years into the future.
 weights = portfolios[method]
 exp_return, vol = portfolio_stats(weights, forecast, cov)
-wealth, growth = simulate_wealth(exp_return - MANAGEMENT_FEE, vol, years, initial, contribution, every)
+# Our fee is taken from the return every month; each purchase (the initial amount and every contribution) pays the
+# transaction cost chosen on the backtest page (default 10 bp). The ETF costs (TER) are already in the ETF prices.
+cost = st.session_state.get("bt_settings", {}).get("cost_bps", round(TRADING_COST * 10_000)) / 10_000
+wealth, growth = simulate_wealth(exp_return - MANAGEMENT_FEE, vol, years, initial, contribution, every, cost)
+# The same futures without our fee, and without fee nor costs: what they cost the client (same random draws)
+no_fee = simulate_wealth(exp_return, vol, years, initial, contribution, every, cost)[0][:, -1]
+free = simulate_wealth(exp_return, vol, years, initial, contribution, every)[0][:, -1]
 
 total_paid = paid_in(initial, contribution, every, 12 * years)
 final = wealth[:, -1]
 loss_limit = -profile.qe2_loss if profile.qe2_loss is not None else 0.30  # QE2 ("more than 30%" -> 30%)
 plan = {"initial": initial, "contribution": contribution, "per": per, "years": years, "paid_in": total_paid,
         "goal": goal, "p5": np.percentile(final, 5), "p50": np.percentile(final, 50), "p95": np.percentile(final, 95),
-        "prob_goal": (final >= goal).mean(), "loss_limit": loss_limit,
+        "prob_goal": (final >= goal).mean(), "loss_limit": loss_limit, "cost_bps": cost * 10_000,
+        "fee_cost": np.median(no_fee - final), "trading_cost": np.median(free - no_fee),
         "prob_loss": (worst_drawdowns(growth) < -loss_limit).mean()}
 
 st.subheader(f"Your wealth in {years} years")
@@ -93,9 +100,24 @@ col2.metric(f"Probability of a fall of more than {loss_limit:.0%} at some point"
 if plan["prob_goal"] < 0.5:
     st.caption("Your goal is reached in less than half of the futures: save more each month, wait longer, "
                "or lower the goal.")
-st.caption(f"Expected return {exp_return:.1%} per year (our forecast), minus our fee of "
-           f"{MANAGEMENT_FEE:.2%}, volatility {vol:.1%}. Monthly returns are drawn from a normal distribution and "
-           "are independent from one month to the next. Amounts are not adjusted for inflation.")
+
+# ---------- What fees and costs take over the horizon ----------
+st.subheader(f"What fees and costs take over {years} years")
+col1, col2, col3 = st.columns(3)
+col1.metric(f"Our fee ({MANAGEMENT_FEE:.2%} per year)", f"−{plan['fee_cost']:,.0f} {currency}",
+            help="Median difference between the final wealth with and without our fee. It grows with time, because "
+                 "the fee is taken every month and the money it takes no longer earns a return.")
+col2.metric(f"Transaction costs ({cost * 10_000:.0f} bp)", f"−{plan['trading_cost']:,.0f} {currency}",
+            help="Paid on each purchase: the initial amount and every contribution. You can change the cost on the "
+                 "backtest page.")
+col3.metric("ETF costs (TER)", "in the prices",
+            help="Each ETF takes its own yearly cost (TER) from its value every day, so the prices we use are already "
+                 "after it, in the expected returns and in the backtest.")
+st.caption(f"Already taken out of the futures above. Expected return {exp_return:.1%} per year (our forecast) "
+           f"minus our fee of {MANAGEMENT_FEE:.2%}, volatility {vol:.1%}. The costs of rebalancing are not included: "
+           "the portfolio trades only a few percent of its value per year, so they are very small (see the "
+           "backtest). Monthly returns are drawn from a normal distribution and are independent from one month to "
+           "the next. Amounts are not adjusted for inflation.")
 
 # ---------- Order list ----------
 st.subheader(f"Your orders for {initial:,.0f} {currency}")

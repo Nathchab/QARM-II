@@ -186,8 +186,11 @@ with tabs[3]:
              "taken every month (1/12 of it). The benchmark pays transaction costs but not our fee. The backtest page "
              "shows the return before costs and fee, the costs, the fee and the return after both. All the other "
              "numbers of the backtest are after costs and fee. On the portfolio page the expected return is before "
-             "our fee and costs; the plan takes our fee out but not the transaction costs, which are small for a "
-             "portfolio that trades a few percent of its value per year.")
+             "our fee and costs. The plan takes out our fee and the transaction cost of each purchase (the initial "
+             "amount and every contribution), and shows how much each one costs over the horizon; rebalancing costs "
+             "are left out there, because the portfolio trades only a few percent of its value per year. The costs "
+             "of the ETFs themselves (TER) are taken by each fund from its own value, so they are already in the "
+             "prices we use, everywhere in the app.")
 
     st.subheader("Stress test")
     st.write("Buy and hold from the market peak of 2008, 2020 and 2022, compared with the largest temporary loss "
@@ -213,8 +216,10 @@ with tabs[4]:
     - We do not shrink the covariance matrix (Ledoit-Wolf): with about 10 products and 60 months, the estimation
       error of Σ is small compared to the error on μ. With many more products, shrinkage would become useful.
     - Bid-ask costs are the same for every product; in reality crypto and small markets cost more.
-    - The projection assumes normal and independent monthly returns: real markets have more extreme months. The
-      fees of the ETFs themselves (TER) and inflation are not included.
+    - The projection assumes normal and independent monthly returns: real markets have more extreme months.
+      Inflation is not included.
+    - The expected returns (market equilibrium) come from covariances, not from prices, so they do not subtract the
+      ETF costs (TER, mostly 0.03% to 0.40% per year); the past returns, the backtest and the stress test do.
     - The questionnaire scores, the capacity tiers and the γ anchors are modelling choices: they are calibrated to be
       consistent with QE3, not estimated on investor data.
     """)

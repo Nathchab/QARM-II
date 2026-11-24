@@ -12,6 +12,7 @@ import pandas as pd
 from src.data import ASSETS
 
 MANAGEMENT_FEE = 0.005  # our robo-advisor fee: 0.50% of the portfolio per year
+TRADING_COST = 0.001    # default transaction cost: 10 bp of every amount bought or sold (plan and backtest)
 # QD1 (when the client needs the money) -> default horizon of the projection, in years
 HORIZON_YEARS = {"a": 1, "b": 3, "c": 5, "d": 10, "e": 15}
 # How often the client adds money: name -> (number of months between two contributions, words for the texts)
@@ -24,18 +25,20 @@ def paid_in(initial, contribution, every, months):
     return initial + contribution * (np.asarray(months) // every)
 
 
-def simulate_wealth(mu, vol, years, initial, contribution, every=1, n_paths=5000):
+def simulate_wealth(mu, vol, years, initial, contribution, every=1, cost=0., n_paths=5000):
     """Simulate the client's wealth month by month.
-    mu, vol: annual expected return (already net of fees) and volatility of the portfolio.
+    mu, vol: annual expected return (already net of our fee) and volatility of the portfolio.
     contribution: amount added at the end of every `every` months (1 = monthly, 3 = quarterly...).
+    cost: transaction cost paid on each purchase (the initial amount and every contribution are invested minus it).
     Returns (wealth: n_paths x (months+1), growth: value of 1 invested at the start, without contributions)."""
     np.random.seed(42)  # same simulations every time, so the page always shows the same numbers
     months = int(years * 12)
     returns = np.random.normal(mu / 12, vol / np.sqrt(12), size=(n_paths, months))
     wealth = np.zeros((n_paths, months + 1))
-    wealth[:, 0] = initial
+    wealth[:, 0] = initial * (1 - cost)
     for t in range(months):
-        wealth[:, t + 1] = wealth[:, t] * (1 + returns[:, t]) + (contribution if (t + 1) % every == 0 else 0)
+        added = contribution * (1 - cost) if (t + 1) % every == 0 else 0
+        wealth[:, t + 1] = wealth[:, t] * (1 + returns[:, t]) + added
     growth = np.hstack([np.ones((n_paths, 1)), np.cumprod(1 + returns, axis=1)])
     return wealth, growth
 

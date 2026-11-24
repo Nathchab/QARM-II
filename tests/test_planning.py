@@ -25,6 +25,11 @@ class ProjectionTests(unittest.TestCase):
         wealth, _ = simulate_wealth(0., 0., 1, 0, 100, every=3, n_paths=1)
         self.assertEqual(list(wealth[0, :7]), [0, 0, 0, 100, 100, 100, 200])  # added at the end of each quarter
 
+    def test_each_purchase_pays_the_transaction_cost(self):
+        wealth, _ = simulate_wealth(0., 0., 1, 10_000, 1_000, every=12, cost=.01, n_paths=1)
+        self.assertAlmostEqual(wealth[0, 0], 9_900)            # the initial purchase pays 1%
+        self.assertAlmostEqual(wealth[0, -1], 9_900 + 990)    # and so does the contribution
+
     def test_more_risk_gives_a_wider_range_of_futures(self):
         calm, _ = simulate_wealth(.05, .05, 10, 10_000, 100)
         wild, _ = simulate_wealth(.05, .20, 10, 10_000, 100)
@@ -72,7 +77,8 @@ class ReportTests(unittest.TestCase):
         weights = pd.Series({"SPY": .5, "AGG": .3, "SHY": .2})
         orders, cash = order_list(weights, pd.Series({"SPY": 600., "AGG": 100., "SHY": 80.}), 10_000)
         plan = dict(initial=10_000, contribution=100, per="per month", years=10, paid_in=22_000, goal=30_000, p5=18_000, p50=28_000,
-                    p95=40_000, prob_goal=.45, loss_limit=.2, prob_loss=.1)
+                    p95=40_000, prob_goal=.45, loss_limit=.2, prob_loss=.1, cost_bps=10,
+                    fee_cost=1_500, trading_cost=22)
         pdf = client_report(profile, profile.recommended_constraints, "Market equilibrium (mean-variance)", weights,
                             .05, .09, "CHF", plan, orders, cash)
         self.assertTrue(pdf.startswith(b"%PDF"))

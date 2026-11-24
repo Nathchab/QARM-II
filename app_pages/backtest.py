@@ -6,7 +6,7 @@ import streamlit as st
 from src.app_helpers import (client_method, get_benchmark, get_choices, get_currency, get_data, get_profile, get_views,
                              method_label)
 from src.backtest import N_SIM, performance, run_backtest
-from src.planning import MANAGEMENT_FEE
+from src.planning import MANAGEMENT_FEE, TRADING_COST
 from src.portfolios import BENCHMARKS, WINDOW
 from src.style import BENCHMARK_COLOR, HIGHLIGHT, OTHERS, YOURS, chart, explain, highlight_lines, nav_buttons, page_header
 
@@ -33,7 +33,7 @@ last = returns.index[-1].date()
 # Every widget has a key: Streamlit then keeps exactly what the client chose. Without a key, a widget whose default
 # changes (here: the saved settings) is replaced by a new one and the client's last change is lost.
 s = st.session_state.get("bt_settings", {"period": (first, last), "rebalancing": "Every 3 months",
-                                          "cost_bps": 10, "cost_aware": True, "max_turnover": 200})
+                                          "cost_bps": round(TRADING_COST * 10_000), "cost_aware": True, "max_turnover": 200})
 period = (max(s["period"][0], first), min(s["period"][1], last))
 if period[0] >= period[1]:  # the saved period does not exist for these products: back to the full history
     period = (first, last)
