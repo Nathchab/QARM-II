@@ -4,7 +4,7 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from src.planning import FREQUENCIES, order_list, paid_in, simulate_wealth, worst_drawdowns
+from src.planning import FREQUENCIES, chance, order_list, paid_in, quantity_text, simulate_wealth, worst_drawdowns
 
 
 class ProjectionTests(unittest.TestCase):
@@ -43,6 +43,14 @@ class ProjectionTests(unittest.TestCase):
     def test_worst_drawdown(self):
         growth = np.array([[1, 1.2, 0.9, 1.3, 1.17]])  # peak 1.2, then 0.9: -25%
         np.testing.assert_allclose(worst_drawdowns(growth), [-.25])
+
+
+class TextTests(unittest.TestCase):
+    def test_probabilities_and_quantities_are_written_for_the_client(self):
+        self.assertEqual([chance(p) for p in (1.0, .995, .5, .004, 0.)], ["over 99%", "over 99%", "50%", "under 1%",
+                                                                         "under 1%"])
+        self.assertEqual(quantity_text(12345.0), "12,345")  # not 1.234e+04
+        self.assertEqual(quantity_text(.0222), "0.0222")
 
 
 class OrderListTests(unittest.TestCase):

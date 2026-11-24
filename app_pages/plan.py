@@ -6,8 +6,8 @@ import streamlit as st
 from src.app_helpers import (client_method, get_choices, get_currency, get_data, get_profile, get_valid_portfolios,
                              method_label, recommended)
 from src.optimizer import portfolio_stats
-from src.planning import (FREQUENCIES, HORIZON_YEARS, MANAGEMENT_FEE, TRADING_COST, order_list, paid_in,
-                          simulate_wealth, worst_drawdowns)
+from src.planning import (FREQUENCIES, HORIZON_YEARS, MANAGEMENT_FEE, TRADING_COST, chance, order_list, paid_in,
+                          quantity_text, simulate_wealth, worst_drawdowns)
 from src.portfolios import METHODS
 from src.report import client_report
 from src.style import ACCENT, BENCHMARK_COLOR, chart, explain, nav_buttons, page_header
@@ -102,8 +102,8 @@ explain(profile, "We simulated 5,000 possible futures of your portfolio. The mid
                  "you paid in: above it, you made money.")
 
 col1, col2 = st.columns(2)
-col1.metric("Probability of reaching your goal", f"{plan['prob_goal']:.0%}")
-col2.metric(f"Probability of a fall of more than {loss_limit:.0%} at some point", f"{plan['prob_loss']:.0%}",
+col1.metric("Probability of reaching your goal", chance(plan["prob_goal"]))
+col2.metric(f"Probability of a fall of more than {loss_limit:.0%} at some point", chance(plan["prob_loss"]),
             help="From a previous peak of the portfolio. The limit is your answer to QE2.")
 if plan["prob_goal"] < 0.5:
     st.caption("Your goal is reached in less than half of the futures: save more each month, wait longer, "
@@ -128,10 +128,13 @@ st.caption(f"Already taken out of the futures above. Expected return {exp_return
 
 # ---------- Order list ----------
 st.subheader(f"Your orders for {initial:,.0f} {currency}")
-orders, cash = order_list(weights, prices.iloc[-1], initial)
-st.dataframe(orders.style.format({"Target weight": "{:.1%}", "Last price": "{:,.2f}", "Quantity": "{:,.4g}",
+# We buy with the amount net of the transaction costs, so that the cash left always pays them
+orders, _ = order_list(weights, prices.iloc[-1], initial * (1 - cost))
+cash = initial - orders["Amount"].sum() * (1 + cost)
+st.dataframe(orders.style.format({"Target weight": "{:.1%}", "Last price": "{:,.2f}", "Quantity": quantity_text,
                                   "Amount": "{:,.0f}"}), hide_index=True)
-st.caption(f"Prices of {prices.index[-1]:%d %B %Y}. ETFs are bought in whole shares, crypto in fractions; "
+st.caption(f"Prices of {prices.index[-1]:%d %B %Y}. ETFs are bought in whole shares, crypto in fractions. The "
+           f"transaction costs of these orders are about {orders['Amount'].sum() * cost:,.0f} {currency}; "
            f"{cash:,.0f} {currency} stay in cash. Products traded in another currency (the .SW products trade in "
            "CHF, the others in USD) are converted at the last USD/CHF rate.")
 

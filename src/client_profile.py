@@ -112,10 +112,10 @@ class ClientProfile:
         score_tier = capacity_tier(self.capacity_score, {"savings": "b", "commitments": "a"})[0][0]
         reasons = [why for why, on in [("your emergency savings cover less than 3 months", a["savings"] == "a"),
                                        ("you have significant obligations", a["commitments"] == "c")] if on]
-        self.capacity_explanation = (f"Score {self.capacity_score}/9, which gives {score_tier} (Low 0–2, Limited 3–4, "
-                                     "Moderate 5–6, High 7–9)"
-                                     + (f"; lowered to Limited because {' and '.join(reasons)}." if self.safeguard
-                                        else "."))
+        tiers = "Low 0–2, Limited 3–4, Moderate 5–6, High 7–9"
+        self.capacity_explanation = (f"Score {self.capacity_score}/9, which gives {score_tier} ({tiers}); lowered to "
+                                     f"Limited because {' and '.join(reasons)}." if self.safeguard
+                                     else f"Score {self.capacity_score}/9 ({tiers}).")
         # Loss limit of the portfolio in a bad year: what he can tolerate (QE2) or what he can afford (capacity),
         # the stricter of the two. loss_reason completes the sentence "... the 10% <loss_reason>".
         losses = {"you can tolerate (QE2)": self.qe2_loss,

@@ -20,6 +20,16 @@ FREQUENCIES = {"Monthly": (1, "per month"), "Quarterly": (3, "per quarter"), "Se
                "Annual": (12, "per year")}
 
 
+def chance(p):
+    """A probability from the simulations, for the client: 5,000 futures cannot show 0% or 100% for sure."""
+    return "over 99%" if p > 0.99 else "under 1%" if p < 0.01 else f"{p:.0%}"
+
+
+def quantity_text(quantity):
+    """Number of units to buy: whole ETF shares, crypto in fractions."""
+    return f"{quantity:,.0f}" if float(quantity).is_integer() else f"{quantity:,.4f}"
+
+
 def paid_in(initial, contribution, every, months):
     """Total paid in after `months` months: the initial amount plus one contribution every `every` months."""
     return initial + contribution * (np.asarray(months) // every)

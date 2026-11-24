@@ -10,7 +10,7 @@ from fpdf import FPDF
 from src import style
 from src.data import ASSETS
 from src.optimizer import region_exposures
-from src.planning import MANAGEMENT_FEE
+from src.planning import MANAGEMENT_FEE, chance, quantity_text
 from src.portfolios import BAD_YEAR
 
 rgb = lambda color: tuple(int(color[i:i + 2], 16) for i in (1, 3, 5))  # "#1c5cab" -> (28, 92, 171)
@@ -18,6 +18,7 @@ INK, ACCENT, MUTED, RULE, PANEL = (27, 36, 48), rgb(style.ACCENT), (91, 100, 114
 CLASS_COLORS = {name: rgb(color) for name, color in style.CLASS_COLORS.items()}
 CLASS_NAMES = {"Equity": "Equities", "Bond": "Bonds", "Other": "Gold and commodities", "Crypto": "Crypto"}
 LEFT, RIGHT, WIDTH = 18, 192, 174  # page margins (mm) and width of the text
+BOTTOM = 277                       # lowest y (mm) where text may go: the footer is below
 # The built-in PDF fonts only know Latin-1 characters
 REPLACE = {"–": "-", "—": "-", "’": "'", "γ": "gamma", "σ": "sigma", "≤": "<=", "≥": ">=", "→": "->", "★": "*"}
 
@@ -62,10 +63,14 @@ class Report(FPDF):
             text = text[:-1]
         return text.rstrip() + "..."
 
-    def section(self, number, title, need=40):
-        """Title of a section; a new page if less than `need` mm are left (a section is not cut in two)."""
-        if self.get_y() + need > 280:
+    def room(self, height):
+        """New page if the next `height` mm do not fit: a block (a row, a box) is never cut in two."""
+        if self.get_y() + height > BOTTOM:
             self.add_page()
+
+    def section(self, number, title, need=40):
+        """Title of a section, with at least `need` mm of its content on the same page."""
+        self.room(need)
         self.ln(4)
         self.set_font("Helvetica", "B", 9)
         self.set_text_color(*ACCENT)
@@ -85,9 +90,11 @@ class Report(FPDF):
     def key_values(self, rows, label_width=52):
         """Two columns: label (muted) and value (bold, on several lines if needed)."""
         for label, value in rows:
+            self.set_font("Helvetica", "B", 9.5)
+            self.room(max(self.multi_cell(WIDTH - label_width, 5.5, clean(value), dry_run=True, output="HEIGHT"),
+                          self.multi_cell(label_width - 3, 5.5, clean(label), dry_run=True, output="HEIGHT")))
             y = self.get_y()
             self.set_xy(LEFT + label_width, y)
-            self.set_font("Helvetica", "B", 9.5)
             self.set_text_color(*INK)
             self.multi_cell(WIDTH - label_width, 5.5, clean(value), align="L", new_x="LMARGIN", new_y="NEXT")
             value_bottom = self.get_y()
@@ -101,6 +108,7 @@ class Report(FPDF):
         """A row of key figures: big number, small label below, on a light panel."""
         gap, height = 3, 19
         width = (WIDTH - gap * (len(items) - 1)) / len(items)
+        self.room(height)
         y = self.get_y()
         for i, (label, value) in enumerate(items):
             x = LEFT + i * (width + gap)
@@ -129,8 +137,7 @@ class Report(FPDF):
         self.set_draw_color(*RULE)
         self.line(LEFT, self.get_y(), RIGHT, self.get_y())
         for row in rows:
-            if self.get_y() > 268:
-                self.add_page()
+            self.room(6.5)
             self.set_text_color(*INK)
             for k, (value, (_, width, align)) in enumerate(zip(row, columns)):
                 self.set_font("Helvetica", "B" if k == 0 else "", 9)
@@ -172,11 +179,11 @@ def client_report(profile, c, method, weights, exp_return, vol, currency, plan, 
     ])
 
     # ---------- 2. Portfolio ----------
-    pdf.section(2, "Your portfolio", need=60 + 7 * len(weights))
+    held = weights[weights >= 0.0005].sort_values(ascending=False)
+    pdf.section(2, "Your portfolio", need=40 + 6.5 * len(held))
     pdf.figures([("Expected return per year", f"{exp_return:.1%}"), ("Volatility per year", f"{vol:.1%}"),
                  ("Loss in a bad year (5%)", f"{exp_return - BAD_YEAR * vol:.1%}"),
                  ("Our fee per year", f"{MANAGEMENT_FEE:.2%}")], highlight=0)
-    held = weights[weights >= 0.0005].sort_values(ascending=False)
     x_ticker, x_name, x_bar, x_value = LEFT, LEFT + 26, LEFT + 108, RIGHT - 14  # columns of the allocation
     bar_width = x_value - x_bar - 3
     for ticker, w in held.items():  # one line per product: ticker, name, bar coloured by asset class, weight
@@ -212,7 +219,7 @@ def client_report(profile, c, method, weights, exp_return, vol, currency, plan, 
                    label_width=70)
 
     # ---------- 3. Plan ----------
-    pdf.section(3, f"Your plan over {plan['years']} years", need=70)
+    pdf.section(3, f"Your plan over {plan['years']} year{'s' if plan['years'] > 1 else ''}", need=80)  # kept together
     pdf.paragraph(f"Initial amount {plan['initial']:,.0f} {currency} and {plan['contribution']:,.0f} {currency} "
                   f"{plan['per']}: you pay in {plan['paid_in']:,.0f} {currency} in total. Wealth at the end, in 5,000 "
                   "simulated futures:")
@@ -222,9 +229,9 @@ def client_report(profile, c, method, weights, exp_return, vol, currency, plan, 
                  (f"Median ({currency})", f"{plan['p50']:,.0f}"),
                  (f"Optimistic, 95% ({currency})", f"{plan['p95']:,.0f}")], highlight=2)
     pdf.key_values([
-        (f"Chance to reach {plan['goal']:,.0f} {currency}", f"{plan['prob_goal']:.0%}"),
+        (f"Chance to reach {plan['goal']:,.0f} {currency}", chance(plan["prob_goal"])),
         (f"Chance of a fall of more than {plan['loss_limit']:.0%}",
-         f"{plan['prob_loss']:.0%} (at some point, from a previous peak)"),
+         f"{chance(plan['prob_loss'])} (at some point, from a previous peak)"),
         (f"Our fee over {plan['years']} years", f"about {plan['fee_cost']:,.0f} {currency} ({MANAGEMENT_FEE:.2%} "
                                                  "per year, already taken out above)"),
         ("Transaction costs", f"about {plan['trading_cost']:,.0f} {currency} ({plan['cost_bps']:.0f} bp on each "
@@ -236,16 +243,19 @@ def client_report(profile, c, method, weights, exp_return, vol, currency, plan, 
     rows = []
     for _, r in orders.iterrows():
         ticker, name = r["Product"].split(" – ", 1)
-        rows.append((ticker, name, f"{r['Target weight']:.1%}", f"{r['Quantity']:,.4g}", f"{r['Amount']:,.0f}"))
+        rows.append((ticker, name, f"{r['Target weight']:.1%}", quantity_text(r["Quantity"]), f"{r['Amount']:,.0f}"))
     pdf.table([("Ticker", 26, "L"), ("Product", 84, "L"), ("Weight", 20, "R"), ("Quantity", 20, "R"),
                (f"Amount ({currency})", 24, "R")], rows)
     pdf.ln(2)
-    pdf.paragraph(f"Cash left: {cash:,.0f} {currency}. ETFs are bought in whole shares, crypto in fractions.",
+    pdf.paragraph(f"Cash left: {cash:,.0f} {currency}, after the transaction costs of these orders "
+                  f"({plan['cost_bps']:.0f} bp). ETFs are bought in whole shares, crypto in fractions.",
                   size=8.5, color=MUTED)
 
     # ---------- 5. Points to review ----------
     pdf.section(5, "Points to review", need=30)
     for message in profile.warnings + profile.notes or ["Nothing special: your answers are consistent."]:
+        pdf.set_font("Helvetica", "", 9.5)
+        pdf.room(pdf.multi_cell(WIDTH - 5, 5, clean(message), dry_run=True, output="HEIGHT"))
         y = pdf.get_y()
         pdf.set_fill_color(*ACCENT)
         pdf.rect(LEFT, y + 2, 1.5, 1.5, "F")
