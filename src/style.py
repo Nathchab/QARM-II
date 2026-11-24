@@ -22,8 +22,8 @@ def apply_style():
         button[kind="primary"], button[kind="secondary"] {min-height: 2.75rem;}
         [data-testid="stMetric"] {background: #f4f6f9; border-radius: 0.4rem; padding: 0.75rem 1rem;}
         [data-testid="stMetricLabel"] p {color: #5b6472;}
-        span[data-baseweb="tag"] {background-color: #e8f0fa !important; color: #1b2430 !important;}
-        span[data-baseweb="tag"] svg {fill: #5b6472 !important;}
+        span[data-tag] {background-color: #e8f0fa !important; color: #1b2430 !important;}
+        span[data-tag] svg {color: #5b6472 !important; fill: #5b6472 !important;}
         </style>""", unsafe_allow_html=True)
 
 

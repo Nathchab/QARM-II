@@ -51,7 +51,7 @@ def questionnaire():
     with st.container(border=True):
         st.subheader("4. What you want to invest in")
         text, opts = UNIVERSE
-        answers["QF1"] = st.multiselect(f"**{text}**", list(opts), default=saved.get("QF1", list(opts)),
+        answers["QF1"] = st.multiselect(f"**{text}**", list(opts), default=saved.get("QF1", [o for o in opts if o != CRYPTO_CHOICE]),
                                         format_func=lambda x: opts[x][0], key=f"q_QF1_{client}")
         if CRYPTO_CHOICE in answers["QF1"]:
             text, opts = CRYPTO_CAP
@@ -79,12 +79,17 @@ def questionnaire():
         else:
             st.session_state["profile"] = ClientProfile(answers, get_currency())
             reset_choices()  # new profile -> we start again from our recommended products, limits and method
-            st.rerun()       # show the result at the top of the page
+            # New version: the box "Change your answers" closes, so the client sees his new result
+            st.session_state["profile_version"] = st.session_state.get("profile_version", 0) + 1
+            st.rerun()
 
 
 def show_result():
     """The client's profile, his limits and our recommendation."""
     profile = refresh_profile()
+    if st.session_state.get("profile_version", 0) != st.session_state.get("profile_shown"):  # just (re)computed
+        st.session_state["profile_shown"] = st.session_state.get("profile_version", 0)
+        st.toast("Your profile is ready.", icon=":material/check_circle:")
     c = profile.recommended_constraints
     st.caption("RESULT")
     st.header(f"{profile.label} tolerance, {profile.capacity_label.lower()} financial capacity")
@@ -152,7 +157,8 @@ def show_result():
 # Once the profile is computed, the result comes first and the questions can still be changed below it
 if "profile" in st.session_state:
     show_result()
-    with st.expander("Change your answers", icon=":material/edit:"):
+    with st.expander("Change your answers", icon=":material/edit:",
+                     key=f"change_answers_{st.session_state.get('profile_version', 0)}"):
         questionnaire()
     nav_buttons("app_pages/welcome.py", "app_pages/choices.py", "Products and limits")
 else:

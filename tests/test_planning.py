@@ -4,17 +4,26 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from src.planning import order_list, simulate_wealth, worst_drawdowns
+from src.planning import FREQUENCIES, order_list, paid_in, simulate_wealth, worst_drawdowns
 
 
 class ProjectionTests(unittest.TestCase):
     def test_without_risk_the_projection_is_the_savings_formula(self):
         """vol = 0: every future is the same, W_T = W_0 (1+r)^n + C ((1+r)^n - 1) / r with r = mu/12."""
-        wealth, growth = simulate_wealth(mu=.06, vol=0., years=10, initial=10_000, monthly=100, n_paths=3)
+        wealth, growth = simulate_wealth(mu=.06, vol=0., years=10, initial=10_000, contribution=100, n_paths=3)
         r, n = .06 / 12, 120
         expected = 10_000 * (1 + r) ** n + 100 * ((1 + r) ** n - 1) / r
         np.testing.assert_allclose(wealth[:, -1], expected)
         np.testing.assert_allclose(growth[:, -1], (1 + r) ** n)
+
+    def test_contribution_frequency(self):
+        """Without return, the final wealth is what was paid in: 4 contributions a year when quarterly."""
+        for name, (every, _) in FREQUENCIES.items():
+            wealth, _ = simulate_wealth(mu=0., vol=0., years=3, initial=1_000, contribution=300, every=every, n_paths=2)
+            self.assertAlmostEqual(wealth[0, -1], 1_000 + 300 * 36 // every)
+            self.assertEqual(paid_in(1_000, 300, every, 36), wealth[0, -1])
+        wealth, _ = simulate_wealth(0., 0., 1, 0, 100, every=3, n_paths=1)
+        self.assertEqual(list(wealth[0, :7]), [0, 0, 0, 100, 100, 100, 200])  # added at the end of each quarter
 
     def test_more_risk_gives_a_wider_range_of_futures(self):
         calm, _ = simulate_wealth(.05, .05, 10, 10_000, 100)
@@ -62,7 +71,7 @@ class ReportTests(unittest.TestCase):
                                      QC3="d"))
         weights = pd.Series({"SPY": .5, "AGG": .3, "SHY": .2})
         orders, cash = order_list(weights, pd.Series({"SPY": 600., "AGG": 100., "SHY": 80.}), 10_000)
-        plan = dict(initial=10_000, monthly=100, years=10, paid_in=22_000, goal=30_000, p5=18_000, p50=28_000,
+        plan = dict(initial=10_000, contribution=100, per="per month", years=10, paid_in=22_000, goal=30_000, p5=18_000, p50=28_000,
                     p95=40_000, prob_goal=.45, loss_limit=.2, prob_loss=.1)
         pdf = client_report(profile, profile.recommended_constraints, "Market equilibrium (mean-variance)", weights,
                             .05, .09, "CHF", plan, orders, cash)

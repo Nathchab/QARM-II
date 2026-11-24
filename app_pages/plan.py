@@ -6,7 +6,8 @@ import streamlit as st
 from src.app_helpers import (client_method, get_choices, get_currency, get_data, get_profile, get_valid_portfolios,
                              method_label)
 from src.optimizer import portfolio_stats
-from src.planning import HORIZON_YEARS, MANAGEMENT_FEE, order_list, simulate_wealth, worst_drawdowns
+from src.planning import (FREQUENCIES, HORIZON_YEARS, MANAGEMENT_FEE, order_list, paid_in, simulate_wealth,
+                          worst_drawdowns)
 from src.portfolios import METHODS
 from src.report import client_report
 from src.style import ACCENT, BENCHMARK_COLOR, chart, explain, nav_buttons, page_header
@@ -25,34 +26,39 @@ saved = client_method(profile, tickers, c)
 with st.container(border=True):
     col1, col2, col3 = st.columns(3)
 inputs = st.session_state.get("plan_inputs", {})  # saved, so they stay when the client changes page
-method = col1.selectbox("Portfolio", methods, index=methods.index(saved), format_func=method_label)
+method = col1.selectbox("Portfolio", methods, index=methods.index(saved) if saved in methods else 0,
+                        format_func=method_label)
 initial = col2.number_input(f"Initial amount ({currency})", min_value=1_000, value=inputs.get("initial", 100_000),
                             step=10_000)
-monthly = col3.number_input(f"Monthly contribution ({currency})", min_value=0, value=inputs.get("monthly", 500),
-                            step=100)
+contribution = col3.number_input(f"Contribution ({currency})", min_value=0, value=inputs.get("contribution", 500),
+                                 step=100, help="Amount you add regularly (0 = no savings plan)")
 years = col1.slider("Horizon (years)", 1, 40, inputs.get("years", HORIZON_YEARS[profile.answers["QD1"]]),
                     help="Default: your answer to QD1 (when you need the money).")
 goal = col2.number_input(f"Your goal ({currency})", min_value=1_000, value=inputs.get("goal", 200_000), step=10_000)
-st.session_state["plan_inputs"] = {"initial": initial, "monthly": monthly, "years": years, "goal": goal}
+frequency = col3.selectbox("Contribution frequency", list(FREQUENCIES),
+                           index=list(FREQUENCIES).index(inputs.get("frequency", "Monthly")))
+every, per = FREQUENCIES[frequency]
+st.session_state["plan_inputs"] = {"initial": initial, "contribution": contribution, "frequency": frequency,
+                                   "years": years, "goal": goal}
 
 # ---------- Projection ----------
 # Expected returns: our forecast (market equilibrium, + your views if you entered some) for every method. It is the
 # most prudent estimate: we do not project the returns of the last 5 years into the future.
 weights = portfolios[method]
 exp_return, vol = portfolio_stats(weights, forecast, cov)
-wealth, growth = simulate_wealth(exp_return - MANAGEMENT_FEE, vol, years, initial, monthly)
+wealth, growth = simulate_wealth(exp_return - MANAGEMENT_FEE, vol, years, initial, contribution, every)
 
-paid_in = initial + monthly * 12 * years
+total_paid = paid_in(initial, contribution, every, 12 * years)
 final = wealth[:, -1]
 loss_limit = -profile.qe2_loss if profile.qe2_loss is not None else 0.30  # QE2 ("more than 30%" -> 30%)
-plan = {"initial": initial, "monthly": monthly, "years": years, "paid_in": paid_in, "goal": goal,
-        "p5": np.percentile(final, 5), "p50": np.percentile(final, 50), "p95": np.percentile(final, 95),
+plan = {"initial": initial, "contribution": contribution, "per": per, "years": years, "paid_in": total_paid,
+        "goal": goal, "p5": np.percentile(final, 5), "p50": np.percentile(final, 50), "p95": np.percentile(final, 95),
         "prob_goal": (final >= goal).mean(), "loss_limit": loss_limit,
         "prob_loss": (worst_drawdowns(growth) < -loss_limit).mean()}
 
 st.subheader(f"Your wealth in {years} years")
 col1, col2, col3, col4 = st.columns(4)
-col1.metric("Total paid in", f"{paid_in:,.0f} {currency}")
+col1.metric("Total paid in", f"{total_paid:,.0f} {currency}")
 col2.metric("Pessimistic (5%)", f"{plan['p5']:,.0f} {currency}", help="5% of the futures end lower")
 col3.metric("Median", f"{plan['p50']:,.0f} {currency}", help="Half of the futures end higher, half lower")
 col4.metric("Optimistic (95%)", f"{plan['p95']:,.0f} {currency}", help="5% of the futures end higher")
@@ -64,8 +70,8 @@ fig.add_scatter(x=months, y=band[2], mode="lines", line=dict(width=0), showlegen
 fig.add_scatter(x=months, y=band[0], mode="lines", line=dict(width=0), fill="tonexty", fillcolor="rgba(42,120,214,0.15)",
                 name="90% of the simulated futures")
 fig.add_scatter(x=months, y=band[1], mode="lines", name="Median", line=dict(color=ACCENT, width=3))
-fig.add_scatter(x=months, y=initial + monthly * 12 * months, mode="lines", name="Paid in",
-                line=dict(color=BENCHMARK_COLOR, dash="dot", width=2))
+fig.add_scatter(x=months, y=paid_in(initial, contribution, every, np.arange(wealth.shape[1])), mode="lines",
+                name="Paid in", line=dict(color=BENCHMARK_COLOR, dash="dot", width=2, shape="hv"))
 fig.add_hline(y=goal, line_dash="dash", line_color="#5b6472", annotation_text="Your goal")
 fig.update_layout(xaxis_title="Years", yaxis_title=currency, yaxis_tickformat=",.0f")
 chart(fig, "5,000 simulated futures of your portfolio")

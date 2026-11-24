@@ -22,7 +22,7 @@ STEPS = [
     ("Products and limits", f"We pre-select ETFs (out of {len(ASSETS)}, Swiss products in CHF included) and limits "
                             "for your profile. You can change the products and make the limits stricter."),
     ("Portfolio", "The method that fits your profile, compared with the other methods, so you can see why."),
-    ("Plan", "What your money could become with a monthly savings plan, the orders to place and a PDF report."),
+    ("Plan", "What your money could become with a regular savings plan, the orders to place and a PDF report."),
     ("Backtest", "How the portfolio would have done in the past, after transaction costs and our fee."),
     ("Stress test", "What would have happened if you had invested just before the 2008, 2020 or 2022 crisis."),
 ]

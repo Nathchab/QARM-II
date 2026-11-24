@@ -292,19 +292,19 @@ with frontier_tab:
 
 # ---------- Compare the methods ----------
 with compare_tab:
-    compare = pd.DataFrame(portfolios)
+    compare = pd.DataFrame(portfolios)[sorted(portfolios, key=lambda m: m != recommended)]  # ours first
     compare.index = [f"{t} ({ASSETS[t][0]})" for t in compare.index]
     stats = pd.DataFrame({m: {"Expected return (our forecast)": portfolio_stats(w, forecast, cov)[0],
                               "Volatility": portfolio_stats(w, forecast, cov)[1],
                               f"Average return of the last {WINDOW} months (past)": portfolio_stats(w, mu, cov)[0],
                               "Beta vs benchmark": beta(past @ w, benchmark_returns),
                               "Tracking error vs benchmark": tracking_error(past @ w, benchmark_returns)}
-                          for m, w in portfolios.items()})
+                          for m, w in portfolios.items()})[compare.columns]
     table = pd.concat([compare, stats])
     table.columns = [method_label(m) + (" – recommended" if m == recommended else "") for m in table.columns]
     rec_col = method_label(recommended) + " – recommended"
     st.dataframe(table.style.format("{:.1%}").format("{:.2f}", subset=pd.IndexSlice[["Beta vs benchmark"], :])
-                 .set_properties(subset=[rec_col], **HIGHLIGHT), height="content")
+                 .set_properties(subset=[c for c in [rec_col] if c in table.columns], **HIGHLIGHT), height="content")
     st.caption(f"Benchmark: {benchmark_name}. Beta and tracking error on the last {WINDOW} months. "
                "The past average is not a forecast: mean-variance was built to be the best portfolio for exactly "
                "these past returns, so of course it looks best on them. The backtest (step 5) compares the methods "

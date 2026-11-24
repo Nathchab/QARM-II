@@ -157,8 +157,9 @@ with tabs[3]:
     st.write("**Projection.** We simulate 5,000 possible futures of the portfolio, month by month (Monte Carlo). "
              "Each month the return is drawn from a normal distribution with the expected "
              "return of our forecast (market equilibrium, + views if any) minus our fee, and the volatility of the portfolio; "
-             "then the monthly contribution is added:")
-    st.latex(r"W_{t+1} = W_t\,(1 + r_{t+1}) + \text{contribution}, \qquad "
+             "then the contribution is added at the end of every month, quarter, half-year or year (k = 1, 3, 6 or 12 "
+             "months, as the client chooses):")
+    st.latex(r"W_{t+1} = W_t\,(1 + r_{t+1}) + C\cdot\mathbb{1}\{(t+1) \bmod k = 0\}, \qquad "
              r"r_{t+1} \sim N\!\left(\tfrac{\mu_p - \text{fee}}{12},\; \tfrac{\sigma_p^2}{12}\right)")
     st.write("We use the same forecast for every method: projecting the returns of the last 5 years into the "
              "future would be too optimistic or too pessimistic. The page shows the 5%, 50% and 95% percentiles of the "

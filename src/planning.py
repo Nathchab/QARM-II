@@ -4,7 +4,7 @@ Robo-advisor planning tools: wealth projection with a savings plan, savings goal
 
 Projection: we simulate many possible futures (Monte Carlo, as for the resampling of lab LN3).
 Each month the portfolio earns a random return ~ Normal(mu/12, vol/sqrt(12)), net of our management fee,
-then the client adds his monthly contribution.
+and the client adds his contribution every 1, 3, 6 or 12 months.
 """
 import numpy as np
 import pandas as pd
@@ -14,11 +14,20 @@ from src.data import ASSETS
 MANAGEMENT_FEE = 0.005  # our robo-advisor fee: 0.50% of the portfolio per year
 # QD1 (when the client needs the money) -> default horizon of the projection, in years
 HORIZON_YEARS = {"a": 1, "b": 3, "c": 5, "d": 10, "e": 15}
+# How often the client adds money: name -> (number of months between two contributions, words for the texts)
+FREQUENCIES = {"Monthly": (1, "per month"), "Quarterly": (3, "per quarter"), "Semi-annual": (6, "every six months"),
+               "Annual": (12, "per year")}
 
 
-def simulate_wealth(mu, vol, years, initial, monthly, n_paths=5000):
+def paid_in(initial, contribution, every, months):
+    """Total paid in after `months` months: the initial amount plus one contribution every `every` months."""
+    return initial + contribution * (np.asarray(months) // every)
+
+
+def simulate_wealth(mu, vol, years, initial, contribution, every=1, n_paths=5000):
     """Simulate the client's wealth month by month.
     mu, vol: annual expected return (already net of fees) and volatility of the portfolio.
+    contribution: amount added at the end of every `every` months (1 = monthly, 3 = quarterly...).
     Returns (wealth: n_paths x (months+1), growth: value of 1 invested at the start, without contributions)."""
     np.random.seed(42)  # same simulations every time, so the page always shows the same numbers
     months = int(years * 12)
@@ -26,7 +35,7 @@ def simulate_wealth(mu, vol, years, initial, monthly, n_paths=5000):
     wealth = np.zeros((n_paths, months + 1))
     wealth[:, 0] = initial
     for t in range(months):
-        wealth[:, t + 1] = wealth[:, t] * (1 + returns[:, t]) + monthly
+        wealth[:, t + 1] = wealth[:, t] * (1 + returns[:, t]) + (contribution if (t + 1) % every == 0 else 0)
     growth = np.hstack([np.ones((n_paths, 1)), np.cumprod(1 + returns, axis=1)])
     return wealth, growth
 
