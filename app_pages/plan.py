@@ -3,12 +3,13 @@ import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
 
-from src.app_helpers import (client_method, explain, get_choices, get_currency, get_data, get_profile,
-                             get_valid_portfolios, method_label, next_button)
+from src.app_helpers import (client_method, get_choices, get_currency, get_data, get_profile, get_valid_portfolios,
+                             method_label)
 from src.optimizer import portfolio_stats
 from src.planning import HORIZON_YEARS, MANAGEMENT_FEE, order_list, simulate_wealth, worst_drawdowns
 from src.portfolios import METHODS
 from src.report import client_report
+from src.style import ACCENT, BENCHMARK_COLOR, chart, explain, nav_buttons, page_header
 
 profile = get_profile()
 tickers, c = get_choices()
@@ -16,19 +17,23 @@ currency = get_currency()
 returns, rf, prices = get_data(currency)
 portfolios, gamma, forecast, cov = get_valid_portfolios(profile, tickers, c)
 
-st.title("4. Your plan")
-st.write("What could your portfolio become, and what do you buy today?")
+page_header(4, "Your plan", "What could your portfolio become, and what do you buy today?")
 
 # ---------- Inputs ----------
 methods = [m for m in METHODS if m in portfolios]
 saved = client_method(profile, tickers, c)
-col1, col2, col3 = st.columns(3)
+with st.container(border=True):
+    col1, col2, col3 = st.columns(3)
+inputs = st.session_state.get("plan_inputs", {})  # saved, so they stay when the client changes page
 method = col1.selectbox("Portfolio", methods, index=methods.index(saved), format_func=method_label)
-initial = col2.number_input(f"Initial amount ({currency})", min_value=1_000, value=100_000, step=10_000)
-monthly = col3.number_input(f"Monthly contribution ({currency})", min_value=0, value=500, step=100)
-years = col1.slider("Horizon (years)", 1, 40, HORIZON_YEARS[profile.answers["QD1"]],
+initial = col2.number_input(f"Initial amount ({currency})", min_value=1_000, value=inputs.get("initial", 100_000),
+                            step=10_000)
+monthly = col3.number_input(f"Monthly contribution ({currency})", min_value=0, value=inputs.get("monthly", 500),
+                            step=100)
+years = col1.slider("Horizon (years)", 1, 40, inputs.get("years", HORIZON_YEARS[profile.answers["QD1"]]),
                     help="Default: your answer to QD1 (when you need the money).")
-goal = col2.number_input(f"Your goal ({currency})", min_value=1_000, value=200_000, step=10_000)
+goal = col2.number_input(f"Your goal ({currency})", min_value=1_000, value=inputs.get("goal", 200_000), step=10_000)
+st.session_state["plan_inputs"] = {"initial": initial, "monthly": monthly, "years": years, "goal": goal}
 
 # ---------- Projection ----------
 # Expected returns: our forecast (market equilibrium, + your views if you entered some) for every method. It is the
@@ -47,22 +52,23 @@ plan = {"initial": initial, "monthly": monthly, "years": years, "paid_in": paid_
 
 st.subheader(f"Your wealth in {years} years")
 col1, col2, col3, col4 = st.columns(4)
-col1.metric("Total paid in", f"{paid_in:,.0f}")
-col2.metric("Pessimistic (5%)", f"{plan['p5']:,.0f}")
-col3.metric("Median", f"{plan['p50']:,.0f}")
-col4.metric("Optimistic (95%)", f"{plan['p95']:,.0f}")
+col1.metric("Total paid in", f"{paid_in:,.0f} {currency}")
+col2.metric("Pessimistic (5%)", f"{plan['p5']:,.0f} {currency}", help="5% of the futures end lower")
+col3.metric("Median", f"{plan['p50']:,.0f} {currency}", help="Half of the futures end higher, half lower")
+col4.metric("Optimistic (95%)", f"{plan['p95']:,.0f} {currency}", help="5% of the futures end higher")
 
 months = np.arange(wealth.shape[1]) / 12
 band = np.percentile(wealth, [5, 50, 95], axis=0)
 fig = go.Figure()
-fig.add_scatter(x=months, y=band[2], mode="lines", line=dict(width=0), showlegend=False)
-fig.add_scatter(x=months, y=band[0], mode="lines", line=dict(width=0), fill="tonexty",
+fig.add_scatter(x=months, y=band[2], mode="lines", line=dict(width=0), showlegend=False, hoverinfo="skip")
+fig.add_scatter(x=months, y=band[0], mode="lines", line=dict(width=0), fill="tonexty", fillcolor="rgba(42,120,214,0.15)",
                 name="90% of the simulated futures")
-fig.add_scatter(x=months, y=band[1], mode="lines", name="Median")
-fig.add_scatter(x=months, y=initial + monthly * 12 * months, mode="lines", line=dict(dash="dot"), name="Paid in")
-fig.add_hline(y=goal, line_dash="dash", annotation_text="Your goal")
-fig.update_layout(xaxis_title="Years", yaxis_title=currency, title="5,000 simulated futures")
-st.plotly_chart(fig)
+fig.add_scatter(x=months, y=band[1], mode="lines", name="Median", line=dict(color=ACCENT, width=3))
+fig.add_scatter(x=months, y=initial + monthly * 12 * months, mode="lines", name="Paid in",
+                line=dict(color=BENCHMARK_COLOR, dash="dot", width=2))
+fig.add_hline(y=goal, line_dash="dash", line_color="#5b6472", annotation_text="Your goal")
+fig.update_layout(xaxis_title="Years", yaxis_title=currency, yaxis_tickformat=",.0f")
+chart(fig, "5,000 simulated futures of your portfolio")
 explain(profile, "We simulated 5,000 possible futures of your portfolio. The middle line is the typical result "
                  "(half of the futures do better, half worse). The coloured band contains 90% of the futures: the "
                  "bottom of the band is a bad but possible outcome, the top a very good one. The dotted line is what "
@@ -73,9 +79,9 @@ col1.metric("Probability of reaching your goal", f"{plan['prob_goal']:.0%}")
 col2.metric(f"Probability of a fall of more than {loss_limit:.0%} at some point", f"{plan['prob_loss']:.0%}",
             help="From a previous peak of the portfolio. The limit is your answer to QE2.")
 if plan["prob_goal"] < 0.5:
-    st.info("Your goal is reached in less than half of the futures: save more each month, wait longer, "
-            "or lower the goal.")
-st.caption(f"Expected return {exp_return:.1%} per year (our forecast: market equilibrium), minus our fee of "
+    st.caption("Your goal is reached in less than half of the futures: save more each month, wait longer, "
+               "or lower the goal.")
+st.caption(f"Expected return {exp_return:.1%} per year (our forecast), minus our fee of "
            f"{MANAGEMENT_FEE:.2%}, volatility {vol:.1%}. Monthly returns are drawn from a normal distribution and "
            "are independent from one month to the next. Amounts are not adjusted for inflation.")
 
@@ -90,5 +96,6 @@ st.caption(f"Prices of {prices.index[-1]:%d %B %Y}. ETFs are bought in whole sha
 
 # ---------- Report ----------
 report = client_report(profile, c, method_label(method), weights, exp_return, vol, currency, plan, orders, cash)
-st.download_button("📄 Download my report (PDF)", report, file_name="robo_advisor_report.pdf", mime="application/pdf")
-next_button("app_pages/backtest.py", "Next: how would it have worked in the past?")
+st.download_button("Download my report (PDF)", report, file_name="robo_advisor_report.pdf", mime="application/pdf",
+                   icon=":material/download:")
+nav_buttons("app_pages/portfolio.py", "app_pages/backtest.py", "Backtest")

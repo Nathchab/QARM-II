@@ -1,11 +1,13 @@
 """
 Data: the app downloads all the prices directly from Yahoo Finance (yfinance) when it starts.
 Nothing has to be run before: no file, no script. The prices stay in memory for one day
-(Streamlit cache), and the user can download them again with the "Update data now" button.
+(Streamlit cache), and the user can download them again with the "Update prices" button.
 """
 import pandas as pd
 import streamlit as st
 import yfinance as yf
+
+from src.black_litterman import MARKET_PORTFOLIO
 
 # Products the client can choose from: ticker -> (name, asset class)
 # The ".SW" products trade in CHF on the Swiss exchange (SIX); all the others trade in USD.
@@ -91,13 +93,22 @@ SNB_RATE = {2005: 0.75, 2006: 1.5, 2007: 2.5, 2008: 2.0, 2009: 0.25, 2010: 0.0, 
             2026: 0.0}
 
 
+def _download(tickers):
+    data = yf.download(tickers, start="2005-01-01", auto_adjust=True, progress=False)["Close"]
+    return data.reindex(columns=tickers)  # a product that failed to download stays empty
+
+
 @st.cache_data(ttl="1d", show_spinner="Downloading the latest prices from Yahoo Finance (about 10 seconds)...")
 def download_prices():
     """Daily prices since 2005 of all products, the USD/CHF rate and the US T-bill rate."""
     tickers = list(ASSETS) + [FX, RF]
-    data = yf.download(tickers, start="2005-01-01", auto_adjust=True, progress=False)["Close"]
-    data = data.reindex(columns=tickers)  # a product that failed to download stays empty
-    if data["SPY"].count() < 1000:
+    data = _download(tickers)
+    missing = [t for t in tickers if data[t].count() < 250]
+    if missing:  # Yahoo sometimes refuses a few tickers when it gets many requests at once: we try them once more
+        data[missing] = _download(missing).reindex(data.index)
+    # Without these series no portfolio can be computed: the market portfolio (equilibrium returns), the "cash"
+    # of the portfolios, the USD/CHF rate and the riskless rate. A missing product is simply not offered.
+    if data[list(MARKET_PORTFOLIO) + list(SHORT_TERM.values()) + [FX, RF]].count().min() < 1000:
         raise ConnectionError("The download from Yahoo Finance failed")
     data = data[data["SPY"].notna()]  # keep only trading days (crypto also trades on weekends)
     return data.ffill()

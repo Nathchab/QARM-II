@@ -1,0 +1,23 @@
+# Look of the app: one blue accent, neutral greys, the Inter font. The chart colours are the same everywhere
+# (src/style.py) and were checked for colour-blind readers.
+[theme]
+base = "light"
+primaryColor = "#1c5cab"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f4f6f9"
+textColor = "#1b2430"
+linkColor = "#1c5cab"
+borderColor = "#dde2ea"
+showWidgetBorder = true
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+headingFontSizes = ["2rem", "1.45rem", "1.15rem"]
+headingFontWeights = [650, 600, 600]
+metricValueFontSize = "1.6rem"
+baseRadius = "0.4rem"
+chartCategoricalColors = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"]
+
+[theme.sidebar]
+backgroundColor = "#f4f6f9"
+
+[client]
+toolbarMode = "minimal"

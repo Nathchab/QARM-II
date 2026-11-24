@@ -18,8 +18,8 @@ def tighten(profile_limits, chosen):
 
 
 def next_button(page, label):
-    """Big button to go to another page."""
-    if st.button(label, type="primary", icon="➡️", width="stretch", key=f"go_{page}"):
+    """Button to another page (used when a page cannot be shown yet)."""
+    if st.button(label, type="primary", icon=":material/arrow_forward:", icon_position="right", key=f"go_{page}"):
         st.switch_page(page)
 
 
@@ -50,21 +50,13 @@ def refresh_profile():
     return profile
 
 
-def explain(profile, text):
-    """Explanation of a chart or table: always visible for beginners, one click away for experienced investors."""
-    if profile.experienced:
-        with st.expander("💡 What does this show?"):
-            st.write(text)
-    else:
-        st.info("💡 **What does this show?** " + text)
-
-
 def show_profile_messages(profile, notes=False):
     """Material financial facts (one warning box) and, on the profile page, neutral explanations."""
     if profile.warnings:
-        st.warning("**Points to review in your situation**\n\n" + "\n".join(f"- {w}" for w in profile.warnings))
-    for note in profile.notes if notes else []:
-        st.info(note)
+        st.warning("**Points to review in your situation**\n\n" + "\n".join(f"- {w}" for w in profile.warnings),
+                   icon=":material/warning:")
+    if notes and profile.notes:
+        st.markdown("**How your answers shape the portfolio**\n\n" + "\n".join(f"- {n}" for n in profile.notes))
 
 
 def get_choices():
@@ -117,21 +109,6 @@ def client_method(profile, tickers, c):
     disappears when he removes his views), otherwise our recommendation."""
     chosen = st.session_state.get("method")
     return chosen if chosen in advice(profile, tickers, c)[0] else recommended(profile, tickers, c)
-
-
-YOURS, BENCHMARK_COLOR, OTHERS = "#e4572e", "#222222", "#b8b8b8"
-
-
-def highlight_lines(fig, yours, benchmark):
-    """Plotly line chart: the client's portfolio thick and coloured, the benchmark dashed, other methods grey."""
-    for trace in fig.data:
-        if trace.name == yours:
-            trace.update(line=dict(color=YOURS, width=4), legendrank=1)
-        elif trace.name == benchmark:
-            trace.update(line=dict(color=BENCHMARK_COLOR, width=2.5, dash="dash"), legendrank=2)
-        else:
-            trace.update(line=dict(color=OTHERS, width=1.5), opacity=0.8, legendrank=3)
-    return fig
 
 
 def get_benchmark(profile, tickers, c):
@@ -191,7 +168,7 @@ def recommendation_summary(profile, tickers, c):
     exposure = class_exposures(w)
     loss = bad_year_loss(w, forecast, cov)
     note = loss_limit_note(profile, gamma, loss, get_currency(), best)
-    return (f"Our recommended portfolio for you ({LABELS[best]}) has about {exposure['Equity']:.0%} in equities, "
+    return (f"{LABELS[best]}: about {exposure['Equity']:.0%} in equities, "
             f"{exposure['Bond']:.0%} in bonds and {exposure['Other'] + exposure['Crypto']:.0%} in other assets, "
             f"with an estimated volatility of {portfolio_stats(w, forecast, cov)[1]:.1%} per year and "
             + (f"a loss of about {-loss:.1%} in a bad year (5% chance)." if loss < 0 else "no loss even in a bad year.")

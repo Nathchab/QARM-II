@@ -5,13 +5,15 @@ from datetime import date
 
 from fpdf import FPDF
 
+from src import style
 from src.data import ASSETS
 from src.optimizer import region_exposures
 from src.planning import MANAGEMENT_FEE
 from src.portfolios import BAD_YEAR
 
-NAVY, ORANGE, GREY, LIGHT = (24, 44, 84), (228, 87, 46), (110, 110, 110), (242, 244, 248)
-CLASS_COLORS = {"Equity": (31, 119, 180), "Bond": (44, 160, 44), "Other": (255, 127, 14), "Crypto": (148, 103, 189)}
+rgb = lambda color: tuple(int(color[i:i + 2], 16) for i in (1, 3, 5))  # "#1c5cab" -> (28, 92, 171)
+NAVY, ACCENT, GREY, LIGHT = (24, 44, 84), rgb(style.ACCENT), (110, 110, 110), (242, 244, 248)
+CLASS_COLORS = {name: rgb(color) for name, color in style.CLASS_COLORS.items()}  # the same colours as in the app
 # The built-in PDF fonts only know Latin-1 characters
 REPLACE = {"–": "-", "—": "-", "’": "'", "γ": "gamma", "σ": "sigma", "≤": "<=", "≥": ">=", "→": "->", "★": "*"}
 
@@ -50,7 +52,7 @@ class Report(FPDF):
         self.set_font("Helvetica", "B", 13)
         self.set_text_color(*NAVY)
         self.cell(0, 8, clean(title), new_x="LMARGIN", new_y="NEXT")
-        self.set_draw_color(*ORANGE)
+        self.set_draw_color(*ACCENT)
         self.set_line_width(0.6)
         self.line(15, self.get_y(), 195, self.get_y())
         self.ln(3)
@@ -80,7 +82,7 @@ class Report(FPDF):
             self.rect(x + 1, y, width - 2, 20, "F")
             self.set_xy(x + 1, y + 3)
             self.set_font("Helvetica", "B", 13)
-            self.set_text_color(*(ORANGE if i == 2 else NAVY))
+            self.set_text_color(*(ACCENT if i == 2 else NAVY))
             self.cell(width - 2, 7, clean(value), align="C")
             self.set_xy(x + 1, y + 11)
             self.set_font("Helvetica", "", 8)
@@ -143,7 +145,7 @@ def client_report(profile, c, method, weights, exp_return, vol, currency, plan, 
         pdf.cell(16, 6, f"{w:.1%}", new_x="LMARGIN", new_y="NEXT")
     pdf.set_font("Helvetica", "I", 8)
     pdf.set_text_color(*GREY)
-    pdf.cell(0, 6, "Blue: equities   Green: bonds   Orange: gold and commodities   Purple: crypto",
+    pdf.cell(0, 6, "Blue: equities   Green: bonds   Yellow: gold and commodities   Pink: crypto",
              new_x="LMARGIN", new_y="NEXT")
     pdf.set_text_color(0, 0, 0)
     regions = {r: w for r, w in region_exposures(weights).items() if w >= 0.005}

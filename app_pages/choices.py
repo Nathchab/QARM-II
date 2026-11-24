@@ -1,22 +1,23 @@
 """Page 2: the client picks the products and can tighten the constraints of his profile."""
 import streamlit as st
 
-from src.app_helpers import (get_currency, get_profile, next_button, recommendation_summary, reset_choices,
-                             show_profile_messages, tighten)
+from src.app_helpers import (get_currency, get_profile, recommendation_summary, reset_choices, show_profile_messages,
+                             tighten)
 from src.data import ASSETS, SHORT_TERM, available_assets, first_date
 from src.optimizer import check_constraints, lacks_home_equity
 from src.portfolios import WINDOW
+from src.style import nav_buttons, page_header
 
 profile = get_profile()
 rec_assets = profile.recommended_assets
 rec_c = profile.recommended_constraints
 
-st.title("2. Your products and limits")
-st.write("We pre-selected **our recommendation** for your profile. You can choose other products, and you "
-         "can make the limits **stricter** than your profile, but not looser: they come from your financial "
-         "situation, horizon and liquidity needs.")
+page_header(2, "Products and limits",
+            "We pre-selected **our recommendation** for your profile. You can choose other products, and you can make "
+            "the limits **stricter** than your profile, but not looser: they come from your financial situation, "
+            "horizon and liquidity needs.")
 
-if st.button("↩️ Back to our recommendation"):
+if st.button("Back to our recommendation", icon=":material/undo:"):
     reset_choices()
     st.rerun()
 
@@ -25,7 +26,7 @@ saved_assets = st.session_state.get("assets", rec_assets)
 saved_c = tighten(rec_c, st.session_state.get("constraints", {}))
 
 # ---------- Products ----------
-st.header("1. Products")
+st.subheader("Products")
 label = lambda t: f"{t} – {ASSETS[t][0]} (data since {first_date(t):%Y})"
 tickers = []
 for asset_class in ["Equity", "Bond", "Other", "Crypto"]:
@@ -58,7 +59,7 @@ def slider(column, label, key, low, high, value, step):
     return pct / 100
 
 
-st.header("2. Constraints")
+st.subheader("Limits")
 col1, col2 = st.columns(2)
 c = {
     "max_equity": slider(col1, "Maximum in equities", "max_equity", 0, rec_c["max_equity"], saved_c["max_equity"], 5),
@@ -104,8 +105,10 @@ problems = check_constraints(tickers, c)
 for p in problems:
     st.error(p)
 if not problems:
-    st.success(f"{len(tickers)} products selected. Your constraints are feasible.")
+    st.success(f"{len(tickers)} products selected. Your limits can all be respected.", icon=":material/check_circle:")
     summary = recommendation_summary(profile, tickers, c)
     if summary:
-        st.info(summary)
-    next_button("app_pages/portfolio.py", "Next: see your portfolio")
+        with st.container(border=True):
+            st.markdown("**Our recommendation with these products and limits**")
+            st.write(summary)
+nav_buttons("app_pages/profile.py", None if problems else "app_pages/portfolio.py", "See your portfolio")

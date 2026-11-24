@@ -18,7 +18,7 @@ A Streamlit web app that works like a robo-advisor:
    could tolerate.
 
 Everything can be shown in USD or CHF. Prices are downloaded from Yahoo Finance and kept in memory for one day.
-The button **Start over (new client)** in the sidebar forgets every answer and choice, so the next client
+The button **New client** in the sidebar forgets every answer and choice, so the next client
 starts from zero.
 
 ## How the profile drives the portfolio
@@ -115,7 +115,7 @@ Tests: `python -m unittest discover -s tests -v`
 ## Code structure
 
 ```
-app.py                  Streamlit menu and sidebar (currency, update data, start over)
+app.py                  Streamlit menu and sidebar (currency, update prices, new client)
 app_pages/              one file per page
 src/questionnaire.py    questions, answer scores, RT and capacity scores
 src/client_profile.py   gamma from tolerance, allocation limits from capacity, products, messages
@@ -128,7 +128,9 @@ src/stress_test.py      crisis replay (with an older fund when a product did not
 src/planning.py         projection, savings goal, order list, management fee
 src/report.py           PDF report of the client
 src/app_helpers.py      small functions shared by the pages
-tests/                  profile, Black-Litterman and optimizer tests, and a test that opens every page
+src/style.py            look of the app: colours, page header, Back/Continue buttons, chart style
+.streamlit/config.toml  theme (font, accent colour, chart colours)
+tests/                  profile, Black-Litterman, optimizer and download tests, and a test that opens every page
 ```
 
 ## Data
@@ -137,6 +139,9 @@ tests/                  profile, Black-Litterman and optimizer tests, and a test
 adjusted prices, the USD/CHF rate (`CHF=X`) and the 13-week US T-bill yield (`^IRX`). The CHF risk-free rate
 uses yearly approximations of the SNB policy rate. The weights of the market portfolio used for the equilibrium returns are our own
 round numbers (stocks and bonds dominate, as in Doeswijk, Lam & Swinkels 2014), not measured market values.
+If Yahoo refuses some tickers, the app asks for them a second time. A product that still fails is simply not
+offered; if a series needed by every portfolio fails (the market portfolio, the short-term bonds, `CHF=X` or
+`^IRX`), the app shows a message and a Try again button instead of wrong numbers.
 
 ## Limitations
 

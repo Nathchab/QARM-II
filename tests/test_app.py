@@ -71,9 +71,9 @@ class AppSmokeTests(unittest.TestCase):
     def test_start_over_forgets_the_client(self):
         app = self.open_page("app_pages/portfolio.py", ClientProfile(ANSWERS))
         self.assertIn("profile", app.session_state)
-        next(b for b in app.button if "Start over" in b.label).click().run()
+        next(b for b in app.button if b.label == "New client").click().run()
         self.assertNotIn("profile", app.session_state)
-        self.assertEqual(app.title[0].value, "Welcome to your robo-advisor")
+        self.assertEqual(app.title[0].value, "A diversified ETF portfolio that fits your profile")
 
 
 class LossLimitNoteTests(unittest.TestCase):
