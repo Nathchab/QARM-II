@@ -163,7 +163,8 @@ def client_report(profile, c, method, weights, exp_return, vol, currency, plan, 
 
     # ---------- 1. Profile ----------
     pdf.section(1, "Your profile")
-    limits = [f"equities at most {c['max_equity']:.0%}", f"bonds at least {c['min_bonds']:.0%}",
+    limits = [f"risky assets (equities, gold, commodities, crypto) at most {c['max_equity']:.0%}",
+              f"bonds at least {c['min_bonds']:.0%}",
               f"gold and commodities at most {c['max_other']:.0%}", f"crypto at most {c['max_crypto']:.0%}",
               f"at most {c['max_weight_per_asset']:.0%} per product"]
     if c.get("min_short_term", 0) > 0:

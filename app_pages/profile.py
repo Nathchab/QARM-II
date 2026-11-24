@@ -7,7 +7,7 @@ from src.client_profile import GAMMA_MAX, GAMMA_MIN, ClientProfile, gamma_from_r
 from src.data import ASSETS, available_assets
 from src.questionnaire import (CAPACITY, CRYPTO_CAP, CRYPTO_CHOICE, EXPERIENCE, HOME_BIAS, HORIZON, QE3_PROFILES,
                                REGION_QUESTION, RISK_TOLERANCE, UNIVERSE, VIEWS_QUESTION, is_experienced,
-                               missing_answers)
+                               missing_answers, question_text)
 from src.style import nav_buttons, page_header
 
 page_header(1, "Your investor profile",
@@ -75,7 +75,8 @@ def questionnaire():
     if st.button("Compute my profile", type="primary", icon=":material/calculate:"):
         missing = missing_answers(answers)
         if missing:
-            st.error("Please answer every question (missing: " + ", ".join(missing) + ").")
+            st.error("Please answer every question. Still missing:\n\n" + "\n".join(f"- {question_text(m)}"
+                                                                                for m in missing))
         else:
             st.session_state["profile"] = ClientProfile(answers, get_currency())
             reset_choices()  # new profile -> we start again from our recommended products, limits and method
@@ -100,7 +101,7 @@ def show_result():
     col3.metric("Financial capacity", profile.capacity_label, help=profile.capacity_explanation,
                 delta=f"lowered, score {profile.capacity_score}/9" if profile.safeguard else None, delta_color="off",
                 delta_arrow="off")
-    col4.metric("Maximum in equities", f"{c['max_equity']:.0%}")
+    col4.metric("Maximum in risky assets", f"{c['max_equity']:.0%}", help="Equities, gold and commodities, crypto")
     tickers = [t for t in profile.recommended_assets if t in available_assets()]
     summary = recommendation_summary(profile, tickers, c)
     if summary:
@@ -114,7 +115,7 @@ def show_result():
 
     st.subheader("Your allocation limits")
     st.dataframe(pd.DataFrame({
-        "Limit": ["Maximum in equities", "Minimum in bonds", "Minimum in short-term government bonds",
+        "Limit": ["Maximum in risky assets (equities, gold and commodities, crypto)", "Minimum in bonds", "Minimum in short-term government bonds",
                   "Maximum in gold and commodities", "Maximum in crypto", "Maximum per product",
                   f"Minimum share of your equities in {profile.region}" if profile.region != "World"
                   else "Minimum share of your equities in one region", "Largest loss in a bad year (5% chance)"],

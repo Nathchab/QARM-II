@@ -6,11 +6,11 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from src.app_helpers import (get_benchmark, get_choices, get_currency, get_data, get_profile, get_valid_portfolios,
-                             loss_limit_note, method_label, show_profile_messages)
+                             limits_note, method_label, show_profile_messages)
 from src.black_litterman import (CONFIDENCE_LEVELS, DELTA, EXTREME_VIEW, MARKET_PORTFOLIO, MAX_VIEWS,
                                   posterior_returns, prior_returns, restrict_views, view_check, view_problems)
 from src.data import ASSETS
-from src.optimizer import (beta, binding_limits, class_exposures, frontier, portfolio_stats, region_exposures,
+from src.optimizer import (CASH_LIKE, beta, binding_limits, class_exposures, frontier, portfolio_stats, region_exposures,
                            risk_contributions, tracking_error)
 from src.planning import MANAGEMENT_FEE
 from src.portfolios import METHODS, WHY, WINDOW, bad_year_loss, dominated_by, estimate, recommended_method
@@ -153,7 +153,9 @@ col3.metric("Sharpe ratio", f"{(ret - rf_now) / vol:.2f}" if vol > 0 else "–")
 col4.metric("Beta vs benchmark", f"{beta(past @ weights, benchmark_returns):.2f}",
             help=f"Benchmark: {benchmark_name}. You can change it on the backtest page.")
 col1, col2, col3, col4 = st.columns(4)
-col1.metric("In equities", f"{exposure['Equity']:.0%}", help=f"Your maximum: {c['max_equity']:.0%}")
+col1.metric("In equities", f"{exposure['Equity']:.0%}",
+            help=f"Risky assets (equities, gold and commodities, crypto): "
+                 f"{exposure['Equity'] + exposure['Other'] + exposure['Crypto']:.0%}, your maximum {c['max_equity']:.0%}")
 col2.metric("In bonds", f"{exposure['Bond']:.0%}", help=f"Your minimum: {c['min_bonds']:.0%}")
 col3.metric("Largest product", f"{weights.max():.0%}")
 col4.metric("Effective products", f"{1 / (weights @ weights):.1f}",
@@ -170,7 +172,7 @@ if ret - MANAGEMENT_FEE < rf_now:  # honest advice: this portfolio is not worth 
                "money-market fund is a better choice than a managed portfolio.", icon=":material/warning:")
 loss = bad_year_loss(weights, forecast, cov)
 rec_loss = bad_year_loss(portfolios.get(recommended, weights), forecast, cov)
-note = loss_limit_note(profile, gamma, rec_loss, currency, recommended)
+note = limits_note(profile, gamma, rec_loss, currency, recommended, c)
 if profile.max_loss is not None:
     if loss >= 0:
         st.caption("Even in a bad year (5% chance) this portfolio should not lose money: within the "
@@ -187,6 +189,18 @@ if note:
         st.warning(note, icon=":material/warning:")
     else:
         st.caption(note)
+short_term = sum(w for t, w in weights.items() if t in CASH_LIKE)
+if short_term > 0.4 and method in ("Equilibrium", "Black-Litterman"):  # a large "cash" part: why, for mean-variance
+    st.markdown(f"**Why {short_term:.0%} in short-term government bonds?** They are the safe part of the portfolio: "
+                f"almost no risk, and they pay about the riskless rate ({rf_now:.1%} per year today in {currency}). "
+                "With the market equilibrium, long-term bonds earn only a little more for much more risk, so for your "
+                "risk aversion the optimiser combines this safe part with a share of equities (the two-fund "
+                "separation of Markowitz and Tobin). To know: if interest rates fall, this part will earn less.")
+crypto = [t for t in weights.index if ASSETS[t][1] == "Crypto"]
+if crypto and c["max_crypto"] > 0 and exposure["Crypto"] < 0.005:  # allowed, but not chosen by the optimiser
+    st.caption(f"You allow up to {c['max_crypto']:.0%} in crypto, but this portfolio holds none: with the market "
+               f"equilibrium, its expected return does not pay for its risk (volatility of {crypto[0]} about "
+               f"{np.sqrt(cov.loc[crypto[0], crypto[0]]):.0%} per year).")
 binding = binding_limits(weights, c)  # limits on which the portfolio sits exactly
 if binding and method not in ("Risk parity (ERC)", "Minimum variance"):
     st.caption("Your limits are binding: " + ", ".join(binding) + ". Without them, the "
@@ -257,7 +271,9 @@ with frontier_tab:
                    f"with less risk than {method_label(recommended)}: choose it instead.", icon=":material/warning:")
     else:
         st.success(f"{method_label(recommended)} is efficient: with our forecast, no other method gives a higher "
-                   "expected return with less risk (it is the optimal portfolio for your γ and your limits).",
+                   "expected return with less risk"
+                   + (" (it is the optimal portfolio for your γ and your limits)." if recommended == "Equilibrium"
+                      else "."),
                    icon=":material/check_circle:")
     try:
         front = frontier(forecast, cov, c)

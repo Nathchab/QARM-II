@@ -46,7 +46,8 @@ indifferent between two options when `γ = 2(μ₂ − μ₁)/(σ₂² − σ₁
 reveals (tested in `tests/test_profile.py`).
 
 **Capacity → limits.** The capacity score gives a tier (Low, Limited, Moderate, High) with a maximum in
-equities, a minimum in bonds and maximums in gold/commodities and crypto. QD1 and QD2 give their own equity
+risky assets (equities, gold/commodities and crypto together), a minimum in bonds and maximums in gold/commodities
+(5-15%) and crypto. Money needed within 5 years gets no long-term bonds. QD1 and QD2 give their own risky-asset
 maximum and bond minimum; the most restrictive source applies. Low savings or heavy commitments cap the tier
 at Limited. Money that may be needed soon (QD1 within 3 years, QD2 withdrawals of 10% or more) must be in
 short-term government bonds (SHY in USD, Swiss government bonds 0-3 years in CHF), not in long bonds: minimum 60%/40% (QD1 a/b) and 50%/25%/10% (QD2 a/b/c).
@@ -57,7 +58,9 @@ volatility ≤ |limit| / 1.645. If the portfolio of γ is riskier, γ is raised 
 the limit ("targeting a volatility", lab LN1). The capacity limit is needed because "minimum in bonds" does not
 limit the risk when the optimiser picks 20-year bonds. Every client gets short-term government bonds (the "cash"
 of the portfolio), so the risk can always be lowered. If even the safest portfolio is too risky, the app
-recommends the safest portfolio and warns the client.
+recommends the safest portfolio and warns the client. In the same way, γ is raised until the maximum in risky
+assets is no longer binding, so that a capped client gets a balanced mix and not only the riskiest products.
+Black-Litterman views tilt the portfolio by at most 2% tracking error per year from the equilibrium portfolio.
 
 **Region and currency.** QF3 asks where the client prefers to invest his equities (Switzerland, Europe, World,
 USA): at least 50% of his equities are in that region (looking through the funds), the rest stays worldwide.

@@ -21,7 +21,7 @@ import pandas as pd
 
 from src.black_litterman import MARKET_PORTFOLIO, posterior_returns, restrict_views
 from src.data import ASSETS
-from src.optimizer import (gamma_for_max_volatility, mean_variance, minimum_variance, portfolio_stats, resampled,
+from src.optimizer import (class_exposures, gamma_for, gamma_for_max_volatility, mean_variance, minimum_variance, portfolio_stats, resampled,
                            risk_parity)
 
 WINDOW = 60  # we estimate returns and risk on the last 60 months (5 years)
@@ -56,6 +56,23 @@ def estimate(monthly_returns, tickers):
     return inputs(monthly_returns[columns].dropna().iloc[-WINDOW:], list(tickers))
 
 
+# Views tilt our recommendation, they do not replace it: the Black-Litterman portfolio stays within a tracking error
+# of MAX_ACTIVE_RISK per year from the market equilibrium portfolio (tracking error, LN2). Without this, mean-variance
+# reacts to small changes of the expected returns of very similar products: a view on gold moved all the US equities
+# into international equities (+1.6% for EFA, +0.6% for SPY, correlation 0.8).
+MAX_ACTIVE_RISK = 0.02
+
+
+def black_litterman_portfolio(pi, cov, gamma, c, views):
+    """Mean-variance with the Black-Litterman returns, moved back towards the equilibrium portfolio if its tracking
+    error against it is above MAX_ACTIVE_RISK. A mix of two portfolios that respect the limits respects them."""
+    equilibrium = mean_variance(pi, cov, gamma, c)
+    with_views = mean_variance(posterior_returns(pi, cov, views), cov, gamma, c)
+    tracking_error = np.sqrt((with_views - equilibrium) @ cov @ (with_views - equilibrium))
+    k = min(1.0, MAX_ACTIVE_RISK / tracking_error) if tracking_error > 0 else 1.0
+    return equilibrium + k * (with_views - equilibrium)
+
+
 def build_portfolios(mu, cov, pi, gamma, c, views, n_sim=100):
     """The methods, all with the same client constraints (Black-Litterman only if the client has views).
     mu = past average returns, pi = market equilibrium returns.
@@ -65,7 +82,7 @@ def build_portfolios(mu, cov, pi, gamma, c, views, n_sim=100):
     methods = {
         "Equilibrium": lambda: mean_variance(pi, cov, gamma, c),
         "Minimum variance": lambda: minimum_variance(cov, c),
-        "Black-Litterman": lambda: mean_variance(posterior_returns(pi, cov, views), cov, gamma, c),
+        "Black-Litterman": lambda: black_litterman_portfolio(pi, cov, gamma, c, views),
         "Mean-variance": lambda: mean_variance(mu, cov, gamma, c),
         "Resampled MV": lambda: resampled(mu, cov, gamma, c, n_sim),
         "Risk parity (ERC)": lambda: risk_parity(cov, c),
@@ -87,13 +104,19 @@ def bad_year_loss(weights, forecast, cov):
     return ret - BAD_YEAR * vol
 
 
-def gamma_for_loss_limit(forecast, cov, gamma, c, max_loss):
-    """Risk aversion actually used: the client's gamma, raised if needed so that the recommended portfolio's
-    loss in a bad year stays within his answer to QE2 (max_loss, e.g. -0.10; None = more than 30%).
-    We ignore the expected return (prudent), so the volatility must be at most |max_loss| / 1.645."""
-    if max_loss is None:
-        return gamma
-    return gamma_for_max_volatility(forecast, cov, gamma, c, -max_loss / BAD_YEAR)
+def gamma_for_limits(forecast, cov, gamma, c, max_loss):
+    """Risk aversion actually used: the client's gamma, raised if needed
+    1. so that the loss in a bad year stays within his loss limit (max_loss, e.g. -0.10; None = no limit). We ignore
+       the expected return (prudent), so the volatility must be at most |max_loss| / 1.645;
+    2. so that the maximum in risky assets (horizon, capacity) is not binding. Otherwise the optimiser fills the
+       allowed risky budget with the products of highest expected return (REITs, emerging markets) instead of a
+       balanced mix: a more prudent gamma gives the same amount of risky assets, but well diversified."""
+    if max_loss is not None:
+        gamma = gamma_for_max_volatility(forecast, cov, gamma, c, -max_loss / BAD_YEAR)
+    if 0.02 <= c["max_equity"] < 1:
+        risky = lambda w: sum(v for k, v in class_exposures(w).items() if k != "Bond")
+        gamma = gamma_for(forecast, cov, gamma, c, lambda w: risky(w) > c["max_equity"] - 0.01)
+    return gamma
 
 
 # Why we recommend each method (shown to the client in the recommendation box)
@@ -106,7 +129,8 @@ WHY = {
     "Risk parity (ERC)": "Your risk answers contradict each other, so we cannot measure your γ reliably. Risk parity "
                          "needs neither γ nor a forecast: every product brings the same share of the risk.",
     "Black-Litterman": "You entered your own market views: Black-Litterman mixes them with the market equilibrium, "
-                       "according to your confidence, then optimises for your γ and your limits.",
+                       "according to your confidence, then optimises for your γ and your limits. Your views tilt "
+                       "the portfolio, but at most 2% tracking error per year away from the equilibrium portfolio.",
 }
 
 

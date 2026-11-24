@@ -47,7 +47,8 @@ def lacks_home_equity(tickers, c):
 def limits(tickers, c, extra_variables=0):
     """The client's limits as a list of (name, row, minimum, maximum): minimum <= row @ x <= maximum."""
     rows, inf = class_rows(tickers, extra_variables), np.inf
-    rules = [("maximum in equities", rows["Equity"], -inf, c["max_equity"]),
+    # max_equity caps all the risky assets: equities, gold and commodities, crypto
+    rules = [("maximum in risky assets", rows["Equity"] + rows["Other"] + rows["Crypto"], -inf, c["max_equity"]),
              ("minimum in bonds", rows["Bond"], c["min_bonds"], inf),
              ("maximum in gold and commodities", rows["Other"], -inf, c["max_other"]),
              ("maximum in crypto", rows["Crypto"], -inf, c["max_crypto"])]
@@ -131,8 +132,8 @@ def check_constraints(tickers, c):
     if room["Bond"] < c["min_bonds"] - 1e-9:
         problems.append(f"Your bond products can hold at most {room['Bond']:.0%}, below the minimum of "
                         f"{c['min_bonds']:.0%} in bonds: add bond products.")
-    total = (min(room["Equity"], c["max_equity"]) + room["Bond"] + min(room["Other"], c["max_other"])
-             + min(room["Crypto"], c["max_crypto"]))
+    risky = room["Equity"] + min(room["Other"], c["max_other"]) + min(room["Crypto"], c["max_crypto"])
+    total = min(risky, c["max_equity"]) + room["Bond"]
     if total < 1 - 1e-9:
         problems.append(f"With these products and limits you can invest only {total:.0%}: "
                         "add products (bonds for example) or raise the maximum per product.")
@@ -254,24 +255,30 @@ def frontier(mu, cov, c, gammas=np.geomspace(0.25, 200, 40)):
     return pd.DataFrame(rows)
 
 
-def gamma_for_max_volatility(mu, cov, gamma, c, max_vol):
-    """Lab LN1 'targeting a particular volatility': the smallest risk aversion (at least gamma) whose
-    mean-variance portfolio has a volatility of at most max_vol. Found by bisection: the volatility of the
-    optimal portfolio goes down when gamma goes up. If even gamma = 1000 is too risky, we return 1000
-    (the safest portfolio we can build with these products)."""
-    volatility = lambda g: portfolio_stats(mean_variance(mu, cov, g, c), mu, cov)[1]
-    if max_vol is None or volatility(gamma) <= max_vol:
+def gamma_for(mu, cov, gamma, c, too_risky):
+    """Lab LN1 'targeting': the smallest risk aversion (at least gamma) whose mean-variance portfolio is not
+    too_risky(weights). Found by bisection: the optimal portfolio becomes safer when gamma goes up. If even
+    gamma = 1000 is too risky, we return 1000 (the safest portfolio we can build with these products)."""
+    risky = lambda g: too_risky(mean_variance(mu, cov, g, c))
+    if not risky(gamma):
         return gamma
     low, high = gamma, 1000.0
-    if volatility(high) > max_vol:
+    if risky(high):
         return high
     for i in range(15):
         middle = np.sqrt(low * high)
-        if volatility(middle) > max_vol:
+        if risky(middle):
             low = middle
         else:
             high = middle
     return high
+
+
+def gamma_for_max_volatility(mu, cov, gamma, c, max_vol):
+    """'Targeting a particular volatility': the smallest gamma whose portfolio has a volatility of at most max_vol."""
+    if max_vol is None:
+        return gamma
+    return gamma_for(mu, cov, gamma, c, lambda w: portfolio_stats(w, mu, cov)[1] > max_vol)
 
 
 # ---------- Risk parity ----------

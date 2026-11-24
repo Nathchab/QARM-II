@@ -76,17 +76,23 @@ class AppSmokeTests(unittest.TestCase):
         self.assertEqual(app.title[0].value, "A diversified ETF portfolio that fits your profile")
 
 
-class LossLimitNoteTests(unittest.TestCase):
+class LimitsNoteTests(unittest.TestCase):
     def test_note_explains_raised_gamma_and_impossible_limit(self):
-        from src.app_helpers import loss_limit_note
+        from src.app_helpers import limits_note
         prudent = ClientProfile(dict(ANSWERS, QE1="a", QE2="a", QE3="a", QE4="a"))  # tolerates at most -5%
-        self.assertIsNone(loss_limit_note(prudent, prudent.gamma, -0.04, "USD", "Equilibrium"))
+        c = prudent.recommended_constraints
+        self.assertIsNone(limits_note(prudent, prudent.gamma, -0.04, "USD", "Equilibrium", c))
         self.assertIn("closest risk aversion",
-                      loss_limit_note(prudent, prudent.gamma * 2, -0.05, "USD", "Equilibrium"))
-        self.assertIsNone(loss_limit_note(prudent, prudent.gamma * 2, -0.05, "USD", "Minimum variance"))  # no gamma
-        self.assertIn("CSBGC3.SW", loss_limit_note(prudent, 1000.0, -0.09, "CHF", "Minimum variance"))
-        rich = dict(ANSWERS, age="a", income="c", savings="c", commitments="a")  # high capacity, accepts > 30%
-        self.assertIsNone(loss_limit_note(ClientProfile(rich), 3.0, -0.40, "USD", "Equilibrium"))  # no limit
+                      limits_note(prudent, prudent.gamma * 2, -0.05, "USD", "Equilibrium", c))
+        self.assertIsNone(limits_note(prudent, prudent.gamma * 2, -0.05, "USD", "Minimum variance", c))  # no gamma
+        self.assertIn("CSBGC3.SW", limits_note(prudent, 1000.0, -0.09, "CHF", "Minimum variance", c))
+        rich = ClientProfile(dict(ANSWERS, age="a", income="c", savings="c", commitments="a", QE2="e", QD1="e",
+                                  QD2="e"))  # high capacity, long horizon, accepts > 30%: no limit at all
+        self.assertIsNone(limits_note(rich, 3.0, -0.40, "USD", "Equilibrium", rich.recommended_constraints))
+        short = ClientProfile(dict(ANSWERS, age="a", income="c", savings="c", commitments="a", QE2="e", QD1="b"))
+        # high capacity and no loss limit, but money needed in 1-3 years: at most 40% in risky assets
+        self.assertIn("more than 40% in risky assets",
+                      limits_note(short, short.gamma * 2, -0.10, "USD", "Equilibrium", short.recommended_constraints))
 
 
 if __name__ == "__main__":

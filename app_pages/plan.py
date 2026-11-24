@@ -133,6 +133,10 @@ orders, _ = order_list(weights, prices.iloc[-1], initial * (1 - cost))
 cash = initial - orders["Amount"].sum() * (1 + cost)
 st.dataframe(orders.style.format({"Target weight": "{:.1%}", "Last price": "{:,.2f}", "Quantity": quantity_text,
                                   "Amount": "{:,.0f}"}), hide_index=True)
+if cash > 0.05 * initial:  # small amounts: some ETF shares cost more than their share of the money
+    st.warning(f"{cash:,.0f} {currency} ({cash / initial:.0%} of your money) stay in cash, because some ETF shares cost "
+               "more than their share of this amount. Invest a larger amount, or use a broker that sells fractions "
+               "of shares.", icon=":material/info:")
 st.caption(f"Prices of {prices.index[-1]:%d %B %Y}. ETFs are bought in whole shares, crypto in fractions. The "
            f"transaction costs of these orders are about {orders['Amount'].sum() * cost:,.0f} {currency}; "
            f"{cash:,.0f} {currency} stay in cash. Products traded in another currency (the .SW products trade in "

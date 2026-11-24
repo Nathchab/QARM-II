@@ -21,7 +21,7 @@ import pandas as pd
 from src.black_litterman import MARKET_PORTFOLIO, posterior_returns, prior_returns, restrict_views
 from src.optimizer import mean_variance_with_costs
 from src.planning import MANAGEMENT_FEE
-from src.portfolios import WINDOW, build_portfolios, gamma_for_loss_limit, inputs
+from src.portfolios import WINDOW, build_portfolios, gamma_for_limits, inputs
 
 N_SIM = 20  # fewer resampling simulations than on the portfolio page, so the backtest stays fast
 
@@ -57,7 +57,7 @@ def run_backtest(returns, rf, tickers, benchmark, gamma, c, views, start, end,
             mu, cov, market_cov = inputs(returns.iloc[t - WINDOW:t], tickers)
             pi = prior_returns(market_cov, rf.iloc[t - 1] * 12)
             bl_mu = posterior_returns(pi, cov, restrict_views(views, tickers))
-            g = gamma_for_loss_limit(bl_mu, cov, gamma, c, max_loss)  # same loss limit as on the portfolio page
+            g = gamma_for_limits(bl_mu, cov, gamma, c, max_loss)  # same loss limit as on the portfolio page
             targets, errors = build_portfolios(mu, cov, pi, g, c, views, N_SIM)
             if errors:  # a method failed on this date: we stop and show its message
                 raise RuntimeError(list(errors.values())[0])

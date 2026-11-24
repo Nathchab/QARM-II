@@ -23,16 +23,24 @@ with tabs[0]:
       and γ evaluated at the RT score of each answer falls inside the interval this answer reveals.
     - **Risk capacity → allocation limits.** Age, income stability, emergency savings and commitments give a
       score from 0 to 9 (Low 0–2, Limited 3–4, Moderate 5–6, High 7–9). Low savings or heavy commitments cap the
-      capacity at Limited. Each tier gives a maximum in equities, a minimum in bonds, maximums in gold/commodities
-      and crypto, and the largest loss the client can afford in a bad year (Low 10%, Limited 15%, Moderate 20%,
-      High: no limit). The horizon (QD1) and the possible withdrawals (QD2) give their own equity maximum and bond minimum.
+      capacity at Limited. Each tier gives a maximum in risky assets (equities, gold and commodities, crypto
+      together: Low 30%, Limited 50%, Moderate 70%, High 100%), a minimum in bonds, a maximum in gold and commodities
+      (5%, 10%, 10%, 15%: a diversifier, not a core holding) and in crypto, and the largest loss the client can
+      afford in a bad year (Low 10%, Limited 15%, Moderate 20%, High: no limit). The horizon (QD1) and the possible
+      withdrawals (QD2) give their own maximum in risky assets and minimum in bonds.
       **The most restrictive source applies.** The client can tighten these limits, never relax them.
     - **Money needed soon goes into short-term government bonds** (SHY in USD, Swiss government bonds 0-3 years
       CSBGC3.SW in CHF). A mean-variance optimiser looks at one period
       only: for the bond minimum it would happily choose 20-year Treasuries (TLT), which can lose a lot when rates
       rise (about 30% in 2022). So money that may be needed within 3 years (QD1) or withdrawn within 12 months (QD2)
       must be in short-term bonds: at least 60%/40% for QD1 "within 1 year"/"1–3 years" and 50%/25%/10% for QD2
-      ">50%"/"25–50%"/"10–25%".
+      ">50%"/"25–50%"/"10–25%". For money that may be needed within 5 years we also leave out the long-term bonds
+      (TLT, Swiss 7-15 years) from the recommended products.
+    - **Why can short-term government bonds be a large part of a prudent portfolio?** With the market equilibrium,
+      a product earns more than the riskless rate only for the market risk it brings. Long-term bonds bring a lot
+      of risk for a small extra return, so for a prudent γ the optimiser holds the safe short-term bonds plus some
+      equities (the two-fund separation of Markowitz/Tobin). The risk to know: if interest rates fall, this part
+      earns less.
     - **Your loss limit is respected.** Two answers give a largest loss: the loss the client says he can tolerate
       (QE2) and the loss he can afford (his financial capacity). The stricter of the two is a hard limit: in a bad
       year (5% chance, normal distribution) the recommended portfolio should not lose more. So its volatility must be
@@ -45,6 +53,11 @@ with tabs[0]:
       12-month loss of the clients with a 5% limit was larger than 5% in 0% to 7% of the periods, depending on the
       region and the currency (mostly 2022, when equities and bonds fell together); for the other clients never.
       It is a limit with a 95% confidence, not a guarantee.
+    - **Balanced inside your limits.** When the client's tolerance asks for more risky assets than his horizon or
+      capacity allows, the optimiser would fill the allowed amount with the products of highest expected return
+      (a client who needs his money in 1-3 years got 15% in REITs and only 12% in the S&P 500). So we raise γ in the
+      same way (bisection) until the maximum in risky assets is no longer binding: the risky part stays a balanced
+      mix, close to the market.
     - **Region (QF3) and currency.** Equities follow the region the client prefers (Switzerland: SMI, Swiss mid caps and
       the world fund ACWI; Europe: VGK + ACWI; USA: S&P 500, small caps + EFA; World: S&P 500 + EFA), and **at least
       50% of the equities** must be in that region, looking through the funds (ACWI is about 2% Swiss). The other half
@@ -135,7 +148,12 @@ with tabs[2]:
              "σᵢ² + σⱼ² − 2σᵢⱼ. Medium gives the view the same uncertainty as the equilibrium. A view more than two "
              "standard deviations √(τ·PΣPᵀ) away from the equilibrium value Pπ triggers a warning (this is the "
              "uncertainty of the equilibrium return itself: with τ = 0.05, as precise as an average over 20 years). Then we run "
-             "mean-variance with μ_BL.")
+             "mean-variance with μ_BL. **Views tilt, they do not replace:** mean-variance reacts strongly to small "
+             "changes between very similar products (a view on gold raised EFA by 1.6% and SPY by 0.6%, and moved all "
+             "the US equities into international ones). So the Black-Litterman portfolio is moved back towards the "
+             "equilibrium portfolio until its tracking error against it is at most 2% per year: "
+             "x = x_eq + k (x_BL − x_eq), with k = min(1, 2% / TE). A mix of two portfolios that respect the limits "
+             "respects them too.")
 
     st.subheader("Minimum variance")
     st.write("The portfolio with the lowest volatility inside the client's limits: the same QP with μ = 0. It is the left "

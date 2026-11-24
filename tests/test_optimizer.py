@@ -29,11 +29,16 @@ class MeanVarianceTests(unittest.TestCase):
         tickers = ["SPY", "AGG", "TLT", "GLD"]
         mu = pd.Series([.12, .02, .025, .04], index=tickers)
         cov = diagonal_cov(tickers, [.04, .003, .02, .03])
-        c = dict(max_equity=.2, min_bonds=.7, max_other=.1, max_crypto=0., max_weight_per_asset=.4)
-        w = mean_variance(mu, cov, .2, c)  # a very tolerant client: every limit binds
-        np.testing.assert_allclose(w, [.2, .3, .4, .1], atol=1e-6)
+        c = dict(max_equity=.3, min_bonds=.7, max_other=.1, max_crypto=0., max_weight_per_asset=.4)
+        w = mean_variance(mu, cov, .2, c)  # a very tolerant client: the risky cap (equities + gold) binds
+        np.testing.assert_allclose(w, [.3, .3, .4, 0.], atol=1e-6)
         self.assertTrue(respects_limits(w.values, tickers, c))
-        self.assertEqual(binding_limits(w, c), ["maximum in equities", "minimum in bonds", "maximum in gold and commodities"])
+        self.assertEqual(binding_limits(w, c), ["maximum in risky assets", "minimum in bonds"])
+        c = dict(c, max_equity=.5, min_bonds=.5)  # SPY at its 40% cap: gold fills the rest of the risky budget
+        w = mean_variance(mu, cov, .2, c)
+        np.testing.assert_allclose(w, [.4, .1, .4, .1], atol=1e-6)
+        self.assertEqual(binding_limits(w, c), ["maximum in risky assets", "minimum in bonds",
+                                                "maximum in gold and commodities"])
 
     def test_minimum_in_short_term_treasuries(self):
         tickers = ["SPY", "TLT", "SHY"]

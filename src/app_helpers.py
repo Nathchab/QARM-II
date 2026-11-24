@@ -8,7 +8,7 @@ from src.client_profile import ClientProfile
 from src.data import SHORT_TERM, available_assets, load_prices, monthly_returns, risk_free
 from src.optimizer import check_constraints, class_exposures, portfolio_stats
 from src.portfolios import (BENCHMARKS, LABELS, bad_year_loss, benchmark_weights, build_portfolios, estimate,
-                            gamma_for_loss_limit, recommended_method)
+                            gamma_for_limits, recommended_method)
 
 
 def tighten(profile_limits, chosen):
@@ -137,7 +137,7 @@ def get_portfolios(currency, tickers, gamma, max_loss, c, views):
     pi = prior_returns(market_cov, rf.iloc[-1] * 12)
     forecast = posterior_returns(pi, cov, restrict_views(views, mu.index))
     try:
-        gamma = gamma_for_loss_limit(forecast, cov, gamma, c, max_loss)
+        gamma = gamma_for_limits(forecast, cov, gamma, c, max_loss)
     except (ValueError, RuntimeError):
         pass  # the optimisation fails: build_portfolios below reports the error
     portfolios, errors = build_portfolios(mu, cov, pi, gamma, c, views)
@@ -167,7 +167,7 @@ def recommendation_summary(profile, tickers, c):
         return None
     exposure = class_exposures(w)
     loss = bad_year_loss(w, forecast, cov)
-    note = loss_limit_note(profile, gamma, loss, get_currency(), best)
+    note = limits_note(profile, gamma, loss, get_currency(), best, c)
     return (f"{LABELS[best]}: about {exposure['Equity']:.0%} in equities, "
             f"{exposure['Bond']:.0%} in bonds and {exposure['Other'] + exposure['Crypto']:.0%} in other assets, "
             f"with an estimated volatility of {portfolio_stats(w, forecast, cov)[1]:.1%} per year and "
@@ -175,19 +175,21 @@ def recommendation_summary(profile, tickers, c):
             + (" " + note if note else ""))
 
 
-def loss_limit_note(profile, gamma, loss, currency, method):
-    """Explains how the client's loss limit was applied to the recommended portfolio (None if nothing to say).
-    loss = bad-year loss of the recommended portfolio `method`."""
-    if profile.max_loss is None:
-        return None
-    if loss < profile.max_loss - 1e-4:  # even the safest portfolio inside the limits loses more
+def limits_note(profile, gamma, loss, currency, method, c):
+    """Explains how the client's limits were applied to the recommended portfolio (None if nothing to say).
+    loss = bad-year loss of the recommended portfolio `method`; gamma = the risk aversion we used."""
+    if profile.max_loss is not None and loss < profile.max_loss - 1e-4:  # even the safest portfolio loses more
         advice = (f"Adding short-term government bonds ({SHORT_TERM[currency]}) or removing risky products "
                   "would lower the risk.")
         return (f"Even the safest portfolio within your limits could lose about {-loss:.0%} in a bad year, more "
                 f"than the {-profile.max_loss:.0%} {profile.loss_reason}: we recommend this safest portfolio "
                 f"(minimum risk). {advice}")
     if gamma > profile.gamma + 1e-6 and method not in ("Minimum variance", "Risk parity (ERC)"):  # no gamma there
-        return (f"Your answers give γ = {profile.gamma:.2f}, but with it the portfolio could lose more than "
-                f"{-profile.max_loss:.0%} in a bad year, the loss {profile.loss_reason}. We use γ = {gamma:.2f}: "
-                "the closest risk aversion that respects this limit.")
+        limits = ([f"a loss of more than {-profile.max_loss:.0%} in a bad year"] if profile.max_loss is not None
+                  else []) + ([f"more than {c['max_equity']:.0%} in risky assets"] if c["max_equity"] < 1 else [])
+        if not limits:
+            return None
+        return (f"Your answers give γ = {profile.gamma:.2f}, but with it the portfolio would go beyond your limits ("
+                + " or ".join(limits) + f"). We use γ = {gamma:.2f}: the closest risk aversion that respects them, so "
+                "the portfolio stays balanced instead of filling your limits with the riskiest products.")
     return None

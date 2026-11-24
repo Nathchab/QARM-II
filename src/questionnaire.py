@@ -135,6 +135,13 @@ def single_choice_questions():
     return {**RISK_TOLERANCE, **HORIZON, **CAPACITY, "QF3": REGION_QUESTION, **EXPERIENCE}
 
 
+def question_text(code):
+    """The question itself, to tell the client which one he forgot (he does not know our codes)."""
+    texts = {code: text for code, (text, _) in single_choice_questions().items()}
+    texts.update(QF1=UNIVERSE[0], QF2=CRYPTO_CAP[0], QH4=VIEWS_QUESTION[0])
+    return texts[code]
+
+
 def is_experienced(answers):
     """Experienced = at least 2 years of investing, intermediate knowledge AND the correct QC3 answer.
     The knowledge check (QC3) protects against investors who overrate themselves."""

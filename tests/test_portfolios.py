@@ -6,8 +6,9 @@ import numpy as np
 import pandas as pd
 
 from src.black_litterman import MARKET_PORTFOLIO, posterior_returns
+from src.data import ASSETS
 from src.portfolios import (BENCHMARKS, bad_year_loss, benchmark_weights, build_portfolios, dominated_by, estimate,
-                            gamma_for_loss_limit, recommended_method)
+                            gamma_for_limits, recommended_method)
 
 TICKERS = ["SPY", "EFA", "AGG", "TLT", "SHY", "GLD"]
 VOL = np.array([.16, .17, .05, .14, .02, .15])
@@ -49,11 +50,29 @@ class RecommendationTests(unittest.TestCase):
     def test_the_loss_limit_of_qe2_is_respected(self):
         forecast = posterior_returns(PI, COV, ())
         for max_loss in [-.05, -.10, -.20, -.30]:
-            gamma = gamma_for_loss_limit(forecast, COV, 1.06, LIMITS, max_loss)  # very tolerant answers
+            gamma = gamma_for_limits(forecast, COV, 1.06, LIMITS, max_loss)  # very tolerant answers
             portfolios, _ = build_portfolios(PAST, COV, PI, gamma, LIMITS, (), n_sim=5)
             loss = bad_year_loss(portfolios["Equilibrium"], forecast, COV)
             self.assertGreaterEqual(loss, max_loss - 1e-4, max_loss)
-        self.assertEqual(gamma_for_loss_limit(forecast, COV, 1.06, LIMITS, None), 1.06)  # "more than 30%": no limit
+        self.assertEqual(gamma_for_limits(forecast, COV, 1.06, dict(LIMITS, max_equity=1.), None), 1.06)  # no limit
+
+    def test_the_risky_cap_is_reached_with_a_balanced_mix(self):
+        """A very tolerant client capped at 50% in risky assets: gamma is raised until the cap no longer binds, so
+        the optimiser does not fill the 50% with the products of highest expected return only."""
+        forecast = posterior_returns(PI, COV, ())
+        gamma = gamma_for_limits(forecast, COV, 1.06, LIMITS, None)
+        w = build_portfolios(PAST, COV, PI, gamma, LIMITS, (), n_sim=5)[0]["Equilibrium"]
+        risky = w[[t for t in w.index if ASSETS[t][1] != "Bond"]].sum()
+        self.assertGreater(gamma, 1.06)
+        self.assertTrue(LIMITS["max_equity"] - .02 <= risky <= LIMITS["max_equity"] - .01 + 1e-6, risky)
+
+    def test_views_tilt_the_portfolio_by_at_most_2_percent_tracking_error(self):
+        from src.portfolios import MAX_ACTIVE_RISK
+        for views in [VIEW, (("GLD", None, .15, .95),), (("SPY", "EFA", .05, .95), ("TLT", None, .0, .95))]:
+            portfolios, errors = build_portfolios(PAST, COV, PI, 3., LIMITS, views, n_sim=5)
+            active = portfolios["Black-Litterman"] - portfolios["Equilibrium"]
+            self.assertLessEqual(np.sqrt(active @ COV @ active), MAX_ACTIVE_RISK + 1e-9)
+            self.assertAlmostEqual(portfolios["Black-Litterman"].sum(), 1.0)
 
     def test_minimum_variance_has_the_lowest_risk(self):
         portfolios, _ = build_portfolios(PAST, COV, PI, 3., LIMITS, VIEW, n_sim=5)

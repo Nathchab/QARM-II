@@ -10,7 +10,7 @@ Two separate dimensions, each with its own job:
    gamma(RT) evaluated at the RT subscore of each option lies inside the interval of that option.
 
 2. Risk CAPACITY (ability: financial situation + horizon + liquidity) -> allocation limits
-   (maximum in equities, minimum in bonds and short-term bonds, maximum in gold/commodities and crypto)
+   (maximum in risky assets, minimum in bonds and short-term bonds, maximum in gold/commodities and crypto)
    and the largest loss he can afford in a bad year.
    The most restrictive source applies. Capacity does NOT change gamma: it would be counted
    twice (gamma floor + limits), and the client's tolerance would no longer matter.
@@ -27,15 +27,21 @@ GAMMA_MAX = 12.0  # gamma at RT = 0 (very risk averse)
 GAMMA_MIN = 1.0   # gamma at RT = 100 (very risk tolerant)
 
 MAX_WEIGHT_PER_ASSET = 0.40
-# Capacity tiers: highest score of the tier -> (name, max equity, min bonds, max gold/commodities, max crypto,
-# largest loss the client can afford in a bad year). The loss is needed because "minimum in bonds" alone does not
+# Capacity tiers: highest score of the tier -> (name, max in risky assets, min bonds, max gold/commodities,
+# max crypto, largest loss the client can afford in a bad year). Risky assets = equities, gold and commodities,
+# crypto: the horizon and capacity caps apply to all of them, not only to equities (otherwise a client who needs his
+# money within 3 years could hold 20% commodities on top of his equities). Gold and commodities stay a small
+# diversifier (5-15%), as in professional portfolios. The loss is needed because "minimum in bonds" alone does not
 # limit the risk: the optimiser can choose 20-year bonds, which are as risky as equities.
 CAPACITY_TIERS = {
-    2: ("Low", 0.30, 0.50, 0.10, 0.00, -0.10),
-    4: ("Limited", 0.50, 0.30, 0.15, 0.00, -0.15),
-    6: ("Moderate", 0.70, 0.15, 0.20, 0.05, -0.20),
-    9: ("High", 1.00, 0.00, 0.20, 0.10, None),
+    2: ("Low", 0.30, 0.50, 0.05, 0.00, -0.10),
+    4: ("Limited", 0.50, 0.30, 0.10, 0.00, -0.15),
+    6: ("Moderate", 0.70, 0.15, 0.10, 0.05, -0.20),
+    9: ("High", 1.00, 0.00, 0.15, 0.10, None),
 }
+# Long-term bonds (20-year Treasuries, Swiss 7-15 years) only for money invested for at least 5 years: they can lose
+# a lot when interest rates rise (TLT lost about 30% in 2022), which money needed sooner cannot afford.
+LONG_BONDS = ["TLT", "CSBGC0.SW"]
 
 
 # ---------- Risk tolerance -> gamma ----------
@@ -123,7 +129,7 @@ class ClientProfile:
         losses = {reason: loss for reason, loss in losses.items() if loss is not None}
         self.loss_reason = max(losses, key=losses.get) if losses else None
         self.max_loss = losses.get(self.loss_reason)
-        sources = {  # name of the source -> (maximum in equities, minimum in bonds, minimum in short-term)
+        sources = {  # name of the source -> (maximum in risky assets, minimum in bonds, minimum in short-term)
             f"financial capacity ({self.capacity_label})": (cap_equity, cap_bonds, 0.0),
             "your horizon (QD1)": HORIZON["QD1"][1][a["QD1"]][1],
             "possible withdrawals (QD2)": HORIZON["QD2"][1][a["QD2"]][1],
@@ -152,6 +158,9 @@ class ClientProfile:
         tickers = list(dict.fromkeys(t for choice in a["QF1"] for t in products_for(choice, self.region, currency)))
         if max_crypto == 0:
             tickers = [t for t in tickers if ASSETS[t][1] != "Crypto"]
+        self.short_horizon = a["QD1"] in ("a", "b", "c") or min_short_term > 0  # money needed within 5 years
+        self.removed_long_bonds = [t for t in tickers if t in LONG_BONDS] if self.short_horizon else []
+        tickers = [t for t in tickers if t not in self.removed_long_bonds]
         self.added_assets = []
         short = SHORT_TERM[currency]
         if short not in tickers:
@@ -186,9 +195,13 @@ class ClientProfile:
         if self.safeguard:
             self.notes.append(f"Your capacity score ({self.capacity_score}/9) gives {score_tier}, but we lower it to "
                               f"Limited because {' and '.join(reasons)}: a loss would be harder to absorb.")
+        if self.removed_long_bonds:
+            self.notes.append("You may need all or part of this money within 5 years: we leave out long-term bonds ("
+                              + ", ".join(self.removed_long_bonds) + "), which can lose a lot when interest rates "
+                              "rise (about 30% in 2022). You can still add them on the next page.")
         if self.rt > 50 and max_equity <= 0.5:
             self.notes.append(f"Your risk tolerance ({self.label}) is higher than what your situation allows: "
-                              f"equities are limited to {max_equity:.0%} by "
+                              f"risky assets (equities, gold and commodities, crypto) are limited to {max_equity:.0%} by "
                               f"{' and '.join(self.limit_sources['max_equity'])}. Within this limit, the "
                               "portfolio still follows your tolerance.")
         if self.crypto_blocked:
