@@ -9,7 +9,8 @@ Our management fee (MANAGEMENT_FEE per year) is taken every month from our portf
 the benchmark: the client would not pay it if he bought the benchmark himself.
 
 Transaction costs, as in lecture LN3:
-  - every trade costs `cost` (e.g. 0.10% of the amount traded), paid from the portfolio;
+  - every trade costs `cost` (e.g. 0.10% of the amount traded), paid from the portfolio in the month of the trade
+    (the first month pays for buying the whole portfolio);
   - the mean-variance methods (equilibrium, past returns, Black-Litterman) can be "cost-aware": they solve the LN3 problem with
     transaction costs, so they only trade when it is worth it;
   - the turnover of each rebalancing can be limited (LN3 turnover management).
@@ -38,13 +39,14 @@ def run_backtest(returns, rf, tickers, benchmark, gamma, c, views, start, end,
     """
     returns: monthly returns of all products; tickers: products of the client.
     benchmark: weights of the benchmark. start, end: dates of the backtest.
-    Returns (monthly net returns of each strategy, weights at each rebalancing, turnover at each rebalancing).
+    Returns (monthly returns of each strategy after transaction costs and fee, weights at each rebalancing,
+    turnover at each rebalancing, transaction costs paid each month).
     """
     returns = returns[sorted(set(tickers) | set(benchmark.index) | set(MARKET_PORTFOLIO))].dropna()
     rf = rf.reindex(returns.index).ffill()
     dates = [t for t in range(WINDOW, len(returns)) if start <= returns.index[t] <= end]
 
-    results, weights_history, turnover_history = {}, {}, {}
+    results, weights_history, turnover_history, costs_paid = {}, {}, {}, {}
     weights = {}  # current weights of each strategy (empty = we start in cash)
     for i, t in enumerate(dates):
         date = returns.index[t]
@@ -84,29 +86,35 @@ def run_backtest(returns, rf, tickers, benchmark, gamma, c, views, start, end,
             weights = new
 
         # ---------- one month of returns ----------
-        month = {}
+        month, paid = {}, {}
         for name, w in weights.items():
             fee = 0.0 if name == "Benchmark" else MANAGEMENT_FEE / 12
-            month[name] = r[w.index] @ w - cost * traded.get(name, 0.0) - fee  # return minus costs and fee
+            paid[name] = cost * traded.get(name, 0.0)  # only in the months when the portfolio trades
+            month[name] = r[w.index] @ w - paid[name] - fee  # return minus transaction costs and fee
             weights[name] = w * (1 + r[w.index]) / (1 + r[w.index] @ w)  # the weights drift
-        results[date] = month
+        results[date], costs_paid[date] = month, paid
 
     weights_history = {m: pd.DataFrame(h).T for m, h in weights_history.items()}
-    return pd.DataFrame(results).T, weights_history, pd.DataFrame(turnover_history)
+    return pd.DataFrame(results).T, weights_history, pd.DataFrame(turnover_history), pd.DataFrame(costs_paid).T
 
 
-def performance(r, rf, benchmark, turnover, cost):
-    """Usual performance measures from monthly returns (rf and benchmark: monthly too)."""
+def performance(r, rf, benchmark, turnover, costs, fee):
+    """Usual performance measures from monthly returns r, after transaction costs and fee (rf and benchmark:
+    monthly too). costs: transaction costs paid each month; fee: management fee per year (0 for the benchmark).
+    The return before costs and fee adds them back: r + costs + fee / 12."""
     rf = rf.reindex(r.index).ffill()
     value = (1 + r).cumprod()
     years = len(r) / 12
+    annual = lambda monthly: (1 + monthly).prod() ** (1 / years) - 1
     return {
-        "Annual return": value.iloc[-1] ** (1 / years) - 1,
+        "Annual return before costs and fee": annual(r + costs + fee / 12),
+        "Transaction costs per year": costs.sum() / years,
+        "Management fee per year": fee,
+        "Annual return after costs and fee": value.iloc[-1] ** (1 / years) - 1,
         "Volatility": r.std() * np.sqrt(12),
         "Sharpe ratio": (r - rf).mean() / r.std() * np.sqrt(12),
         "Max drawdown": (value / value.cummax() - 1).min(),
         "Beta vs benchmark": r.cov(benchmark) / benchmark.var(),          # LN2
         "Tracking error": (r - benchmark).std() * np.sqrt(12),            # LN2
         "Turnover per year": turnover.iloc[1:].sum() / years,             # without the first purchase
-        "Costs paid per year": cost * turnover.sum() / years,
     }

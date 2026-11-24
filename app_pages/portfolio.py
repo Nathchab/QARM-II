@@ -111,7 +111,8 @@ with recommendation_box.container(border=True):
     st.write(WHY[recommended])
 method = st.radio("Portfolio shown on this page", methods, horizontal=True, index=methods.index(default),
                   format_func=lambda m: method_label(m) + (" – recommended" if m == recommended else ""),
-                  help="The other methods are shown to compare them with our recommendation.")
+                  help="The other methods are shown to compare them with our recommendation.",
+                  key=f"shown_method_{recommended}_{len(methods)}")  # a new widget when our recommendation changes
 if method != recommended:
     st.warning(f"You are looking at {method_label(method)}, not at our recommendation.", icon=":material/info:")
 # We remember the method only if the client chose another one: otherwise he follows our recommendation,

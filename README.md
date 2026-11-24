@@ -13,7 +13,9 @@ A Streamlit web app that works like a robo-advisor:
    of reaching a savings goal and of a fall larger than the loss he accepts, the orders to place (number of shares
    of each ETF), our 0.50% management fee, and a downloadable PDF report (fpdf2).
 5. **Backtest**: out-of-sample comparison of the methods, with transaction costs, a turnover limit and
-   optional cost-aware optimisation (LN3), after our management fee.
+   optional cost-aware optimisation (LN3). Costs are paid in the month of each trade (the first month pays for the
+   initial purchase) and our fee every month; the page shows the return before costs and fee, the costs, the fee
+   and the return after both.
 6. **Stress test**: buy-and-hold replays of 2008, 2020 and 2022, compared with the loss the client said he
    could tolerate.
 
@@ -130,7 +132,7 @@ src/report.py           PDF report of the client
 src/app_helpers.py      small functions shared by the pages
 src/style.py            look of the app: colours, page header, Back/Continue buttons, chart style
 .streamlit/config.toml  theme (font, accent colour, chart colours)
-tests/                  profile, Black-Litterman, optimizer and download tests, and a test that opens every page
+tests/                  profile, Black-Litterman, optimizer, backtest-cost and download tests, and a test that opens every page
 ```
 
 ## Data

@@ -29,8 +29,9 @@ pages = st.navigation({
 CURRENCIES = ["USD", "CHF"]
 st.session_state["currency"] = st.sidebar.radio(
     "Portfolio currency", CURRENCIES, index=CURRENCIES.index(st.session_state.get("currency", "USD")),
-    horizontal=True, help="The bonds and the cash of your portfolio are in this currency. Prices are converted "
-                          "with the USD/CHF rate; the riskless rate in CHF is the SNB policy rate.")
+    horizontal=True, key="currency_radio",
+    help="The bonds and the cash of your portfolio are in this currency. Prices are converted with the USD/CHF rate; "
+         "the riskless rate in CHF is the SNB policy rate.")
 try:
     last_date = download_prices().index[-1]
 except Exception:

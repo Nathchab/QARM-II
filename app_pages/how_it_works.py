@@ -181,6 +181,13 @@ with tabs[3]:
              r"x = x^0 + \Delta x^+ - \Delta x^-,\quad \sum (\Delta x^-_i + \Delta x^+_i) \le \tau^+")
     st.write("So the portfolio only trades when the gain is larger than the cost. Resampled MV and risk parity "
              "move towards their new target, but never trade more than the turnover limit τ⁺.")
+    st.write("**When are costs and fee taken?** In the month of each trade, the portfolio pays the cost × the amount "
+             "bought and sold (the first month pays for buying the whole portfolio). Our fee of 0.50% per year is "
+             "taken every month (1/12 of it). The benchmark pays transaction costs but not our fee. The backtest page "
+             "shows the return before costs and fee, the costs, the fee and the return after both. All the other "
+             "numbers of the backtest are after costs and fee. On the portfolio page the expected return is before "
+             "our fee and costs; the plan takes our fee out but not the transaction costs, which are small for a "
+             "portfolio that trades a few percent of its value per year.")
 
     st.subheader("Stress test")
     st.write("Buy and hold from the market peak of 2008, 2020 and 2022, compared with the largest temporary loss "

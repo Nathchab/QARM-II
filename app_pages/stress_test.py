@@ -23,12 +23,18 @@ portfolios["Benchmark"] = benchmark
 
 with st.container(border=True):
     col1, col2, col3 = st.columns(3)
-crisis = col1.selectbox("Crisis", list(CRISES))
+inputs = st.session_state.get("stress_inputs", {})  # saved, so they stay when the client changes page
+crisis = col1.selectbox("Crisis", list(CRISES), index=list(CRISES).index(inputs.get("crisis", list(CRISES)[0])),
+                        key="stress_crisis")
 methods = [m for m in METHODS if m in portfolios]
-selected = client_method(profile, tickers, c)
+selected, rec = client_method(profile, tickers, c), recommended(profile, tickers, c)
 method = col2.selectbox("Your portfolio", methods, index=methods.index(selected) if selected in methods else 0,
-                        format_func=method_label)
-amount = col3.number_input(f"Amount invested ({currency})", min_value=1000, value=100_000, step=10_000)
+                        format_func=lambda m: method_label(m) + (" – recommended" if m == rec else ""),
+                        key=f"stress_method_{rec}")
+st.session_state["method"] = method if method != rec else None  # the same portfolio on every page
+amount = col3.number_input(f"Amount invested ({currency})", min_value=1000, value=inputs.get("amount", 100_000),
+                           step=10_000, key="stress_amount")
+st.session_state["stress_inputs"] = {"crisis": crisis, "amount": amount}
 
 start, end, story = CRISES[crisis]
 st.markdown(f"**{crisis}** ({pd.Timestamp(start):%b %Y} to {pd.Timestamp(end):%b %Y}). {story}")

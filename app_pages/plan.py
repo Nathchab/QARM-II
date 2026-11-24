@@ -4,7 +4,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from src.app_helpers import (client_method, get_choices, get_currency, get_data, get_profile, get_valid_portfolios,
-                             method_label)
+                             method_label, recommended)
 from src.optimizer import portfolio_stats
 from src.planning import (FREQUENCIES, HORIZON_YEARS, MANAGEMENT_FEE, order_list, paid_in, simulate_wealth,
                           worst_drawdowns)
@@ -26,16 +26,22 @@ saved = client_method(profile, tickers, c)
 with st.container(border=True):
     col1, col2, col3 = st.columns(3)
 inputs = st.session_state.get("plan_inputs", {})  # saved, so they stay when the client changes page
+# Every widget has a key, so Streamlit keeps exactly what the client chose (see backtest.py)
+rec = recommended(profile, tickers, c)
 method = col1.selectbox("Portfolio", methods, index=methods.index(saved) if saved in methods else 0,
-                        format_func=method_label)
+                        format_func=lambda m: method_label(m) + (" – recommended" if m == rec else ""),
+                        key=f"plan_method_{rec}")
+st.session_state["method"] = method if method != rec else None  # the same portfolio on every page
 initial = col2.number_input(f"Initial amount ({currency})", min_value=1_000, value=inputs.get("initial", 100_000),
-                            step=10_000)
+                            step=10_000, key="plan_initial")
 contribution = col3.number_input(f"Contribution ({currency})", min_value=0, value=inputs.get("contribution", 500),
-                                 step=100, help="Amount you add regularly (0 = no savings plan)")
+                                 step=100, help="Amount you add regularly (0 = no savings plan)",
+                                 key="plan_contribution")
 years = col1.slider("Horizon (years)", 1, 40, inputs.get("years", HORIZON_YEARS[profile.answers["QD1"]]),
-                    help="Default: your answer to QD1 (when you need the money).")
-goal = col2.number_input(f"Your goal ({currency})", min_value=1_000, value=inputs.get("goal", 200_000), step=10_000)
-frequency = col3.selectbox("Contribution frequency", list(FREQUENCIES),
+                    help="Default: your answer to QD1 (when you need the money).", key="plan_years")
+goal = col2.number_input(f"Your goal ({currency})", min_value=1_000, value=inputs.get("goal", 200_000), step=10_000,
+                         key="plan_goal")
+frequency = col3.selectbox("Contribution frequency", list(FREQUENCIES), key="plan_frequency",
                            index=list(FREQUENCIES).index(inputs.get("frequency", "Monthly")))
 every, per = FREQUENCIES[frequency]
 st.session_state["plan_inputs"] = {"initial": initial, "contribution": contribution, "frequency": frequency,
