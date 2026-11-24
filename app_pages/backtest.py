@@ -52,8 +52,9 @@ with st.form("settings"):
     max_turnover = col1.slider("Maximum turnover per rebalancing (%)", 5, 200, s["max_turnover"], 5,
                                key="bt_turnover", help="Turnover = sum of |new weight - old weight|. 200% = no limit.")
     cost_aware = col2.checkbox("Cost-aware optimisation", s["cost_aware"], key="bt_cost_aware",
-                               help="The mean-variance methods (market equilibrium, past returns, Black-Litterman) "
-                                    "include the costs in the optimisation, so they only trade when it is worth it.")
+                               help="Market equilibrium, minimum variance and past-returns mean-variance include the "
+                                    "costs in the optimisation, so they only trade when it is worth it. The other "
+                                    "methods move towards their new target.")
     st.form_submit_button("Run the backtest", type="primary", icon=":material/play_arrow:")
 
 st.session_state["benchmark"] = benchmark_name
@@ -71,7 +72,7 @@ def cached_backtest(currency, tickers, benchmark, gamma, max_loss, c, views, per
 
 
 cost = cost_bps / 10_000
-with st.spinner("Running the backtest (10 to 60 seconds the first time)..."):
+with st.spinner("Running the backtest (5 to 20 seconds the first time, then instant)..."):
     try:
         results, weights_history, turnover, costs = cached_backtest(
             currency, tickers, get_benchmark(profile, tickers, c)[1], profile.gamma, profile.max_loss, c, get_views(),

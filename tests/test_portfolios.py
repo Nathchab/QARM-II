@@ -74,6 +74,14 @@ class RecommendationTests(unittest.TestCase):
             self.assertLessEqual(np.sqrt(active @ COV @ active), MAX_ACTIVE_RISK + 1e-9)
             self.assertAlmostEqual(portfolios["Black-Litterman"].sum(), 1.0)
 
+    def test_only_the_methods_asked_are_computed(self):
+        """The backtest asks only for the targets it needs: the same weights as when all methods are computed."""
+        every, _ = build_portfolios(PAST, COV, PI, 3., LIMITS, VIEW, n_sim=5)
+        some, _ = build_portfolios(PAST, COV, PI, 3., LIMITS, VIEW, n_sim=5, only=["Resampled MV", "Risk parity (ERC)"])
+        self.assertEqual(list(some), ["Resampled MV", "Risk parity (ERC)"])
+        for m in some:
+            pd.testing.assert_series_equal(some[m], every[m])
+
     def test_minimum_variance_has_the_lowest_risk(self):
         portfolios, _ = build_portfolios(PAST, COV, PI, 3., LIMITS, VIEW, n_sim=5)
         risk = {m: float(w @ COV @ w) for m, w in portfolios.items()}

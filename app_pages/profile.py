@@ -102,7 +102,8 @@ def show_result():
                 delta=f"lowered, score {profile.capacity_score}/9" if profile.safeguard else None, delta_color="off",
                 delta_arrow="off")
     col4.metric("Maximum in risky assets", f"{c['max_equity']:.0%}", help="Equities, gold and commodities, crypto")
-    tickers = [t for t in profile.recommended_assets if t in available_assets()]
+    available = available_assets()
+    tickers = [t for t in profile.recommended_assets if t in available]
     summary = recommendation_summary(profile, tickers, c)
     if summary:
         with st.container(border=True):

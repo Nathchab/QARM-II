@@ -5,12 +5,12 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from src.app_helpers import (get_benchmark, get_choices, get_currency, get_data, get_profile, get_valid_portfolios,
-                             limits_note, method_label, show_profile_messages)
+from src.app_helpers import (get_benchmark, get_choices, get_currency, get_data, get_frontier, get_profile,
+                             get_valid_portfolios, limits_note, method_label, show_profile_messages)
 from src.black_litterman import (CONFIDENCE_LEVELS, DELTA, EXTREME_VIEW, MARKET_PORTFOLIO, MAX_VIEWS,
                                   posterior_returns, prior_returns, restrict_views, view_check, view_problems)
 from src.data import ASSETS
-from src.optimizer import (CASH_LIKE, beta, binding_limits, class_exposures, frontier, portfolio_stats, region_exposures,
+from src.optimizer import (CASH_LIKE, beta, binding_limits, class_exposures, portfolio_stats, region_exposures,
                            risk_contributions, tracking_error)
 from src.planning import MANAGEMENT_FEE
 from src.portfolios import METHODS, WHY, WINDOW, bad_year_loss, dominated_by, estimate, recommended_method
@@ -276,7 +276,7 @@ with frontier_tab:
                       else "."),
                    icon=":material/check_circle:")
     try:
-        front = frontier(forecast, cov, c)
+        front = get_frontier(forecast, cov, c)
     except (ValueError, RuntimeError, np.linalg.LinAlgError):
         front = pd.DataFrame()
         st.caption("The efficient frontier could not be calculated with these inputs.")

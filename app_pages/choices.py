@@ -27,10 +27,11 @@ saved_c = tighten(rec_c, st.session_state.get("constraints", {}))
 
 # ---------- Products ----------
 st.subheader("Products")
+available = available_assets()
 label = lambda t: f"{t} – {ASSETS[t][0]} (data since {first_date(t):%Y})"
 tickers = []
 for asset_class in ["Equity", "Bond", "Other", "Crypto"]:
-    options = [t for t in available_assets() if ASSETS[t][1] == asset_class]
+    options = [t for t in available if ASSETS[t][1] == asset_class]
     if asset_class == "Crypto" and rec_c["max_crypto"] == 0:
         st.caption("Crypto: not allowed by your profile (maximum 0%).")
         continue

@@ -47,6 +47,19 @@ class BacktestCostTests(unittest.TestCase):
         self.assertLess(mine["Annual return after costs and fee"], mine["Annual return before costs and fee"])
         self.assertAlmostEqual(mine["Transaction costs per year"], costs["Equilibrium"].sum() / (len(paid) / 12))
 
+    def test_black_litterman_keeps_its_2_percent_tilt_at_every_rebalancing(self):
+        """The backtest holds the same Black-Litterman portfolio as the portfolio page: at most MAX_ACTIVE_RISK
+        (tracking error) away from the equilibrium portfolio."""
+        from src.portfolios import MAX_ACTIVE_RISK, WINDOW, inputs
+        views = (("GLD", None, .15, .95),)
+        _, weights, _, _ = run_backtest(self.returns, self.rf, TICKERS, self.benchmark, 4., LIMITS, views,
+                                        self.returns.index[60], self.returns.index[-1], 3, 0., True)
+        for date in weights["Black-Litterman"].index:
+            t = self.returns.index.get_loc(date)
+            cov = inputs(self.returns.iloc[t - WINDOW:t], TICKERS)[1]
+            active = weights["Black-Litterman"].loc[date] - weights["Equilibrium"].loc[date]
+            self.assertLessEqual(np.sqrt(active @ cov @ active), MAX_ACTIVE_RISK + 1e-4)
+
 
 if __name__ == "__main__":
     unittest.main()

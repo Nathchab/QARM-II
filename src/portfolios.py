@@ -73,9 +73,9 @@ def black_litterman_portfolio(pi, cov, gamma, c, views):
     return equilibrium + k * (with_views - equilibrium)
 
 
-def build_portfolios(mu, cov, pi, gamma, c, views, n_sim=100):
+def build_portfolios(mu, cov, pi, gamma, c, views, n_sim=100, only=None):
     """The methods, all with the same client constraints (Black-Litterman only if the client has views).
-    mu = past average returns, pi = market equilibrium returns.
+    mu = past average returns, pi = market equilibrium returns. only: list of methods to compute (None = all).
     Returns (weights of the methods that worked, error message of the methods that failed):
     one failing method does not hide the others."""
     views = restrict_views(views, mu.index)  # ignore views on products not chosen
@@ -89,6 +89,8 @@ def build_portfolios(mu, cov, pi, gamma, c, views, n_sim=100):
     }
     if not views:  # Black-Litterman only for experienced clients who entered views
         del methods["Black-Litterman"]
+    if only is not None:
+        methods = {name: compute for name, compute in methods.items() if name in only}
     portfolios, errors = {}, {}
     for name, compute in methods.items():
         try:

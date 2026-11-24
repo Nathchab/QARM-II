@@ -143,7 +143,8 @@ st.caption(f"Prices of {prices.index[-1]:%d %B %Y}. ETFs are bought in whole sha
            "CHF, the others in USD) are converted at the last USD/CHF rate.")
 
 # ---------- Report ----------
-report = client_report(profile, c, method_label(method), weights, exp_return, vol, currency, plan, orders, cash)
+# The PDF is written only when the client clicks (not at every change of the inputs), and the page does not reload.
+report = lambda: client_report(profile, c, method_label(method), weights, exp_return, vol, currency, plan, orders, cash)
 st.download_button("Download my report (PDF)", report, file_name="robo_advisor_report.pdf", mime="application/pdf",
-                   icon=":material/download:")
+                   icon=":material/download:", on_click="ignore")
 nav_buttons("app_pages/portfolio.py", "app_pages/backtest.py", "Backtest")

@@ -6,7 +6,7 @@ import streamlit as st
 from src.black_litterman import posterior_returns, prior_returns, restrict_views
 from src.client_profile import ClientProfile
 from src.data import SHORT_TERM, available_assets, load_prices, monthly_returns, risk_free
-from src.optimizer import check_constraints, class_exposures, portfolio_stats
+from src.optimizer import check_constraints, class_exposures, frontier, portfolio_stats
 from src.portfolios import (BENCHMARKS, LABELS, bad_year_loss, benchmark_weights, build_portfolios, estimate,
                             gamma_for_limits, recommended_method)
 
@@ -63,7 +63,8 @@ def get_choices():
     """Products and constraints chosen by the client (our recommendation by default)."""
     profile = get_profile()
     tickers = st.session_state.get("assets", profile.recommended_assets)
-    tickers = [t for t in tickers if t in available_assets()]
+    available = available_assets()
+    tickers = [t for t in tickers if t in available]
     c = tighten(profile.recommended_constraints, st.session_state.get("constraints", {}))
     problems = check_constraints(tickers, c)
     if problems:
@@ -120,7 +121,7 @@ def get_benchmark(profile, tickers, c):
     return name, benchmark_weights(name, tickers, equity_share, get_currency())
 
 
-@st.cache_data
+@st.cache_data(ttl="1d")  # like the prices: new data every day
 def get_data(currency):
     """Monthly returns of all products, monthly risk-free rate, daily prices."""
     prices = load_prices(currency)
@@ -142,6 +143,12 @@ def get_portfolios(currency, tickers, gamma, max_loss, c, views):
         pass  # the optimisation fails: build_portfolios below reports the error
     portfolios, errors = build_portfolios(mu, cov, pi, gamma, c, views)
     return portfolios, errors, gamma, forecast, cov
+
+
+@st.cache_data(max_entries=100)
+def get_frontier(forecast, cov, c):
+    """Efficient frontier (40 optimisations): kept in memory, so the portfolio page reacts at once to the other widgets."""
+    return frontier(forecast, cov, c)
 
 
 def get_valid_portfolios(profile, tickers, c):

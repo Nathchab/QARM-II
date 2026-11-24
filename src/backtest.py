@@ -11,8 +11,10 @@ the benchmark: the client would not pay it if he bought the benchmark himself.
 Transaction costs, as in lecture LN3:
   - every trade costs `cost` (e.g. 0.10% of the amount traded), paid from the portfolio in the month of the trade
     (the first month pays for buying the whole portfolio);
-  - the mean-variance methods (equilibrium, past returns, Black-Litterman) can be "cost-aware": they solve the LN3 problem with
-    transaction costs, so they only trade when it is worth it;
+  - the mean-variance methods (equilibrium, minimum variance, past returns) can be "cost-aware": they solve the LN3
+    problem with transaction costs, so they only trade when it is worth it;
+  - Black-Litterman, resampled MV and risk parity move towards their new target (Black-Litterman: the same portfolio
+    as on the portfolio page, at most MAX_ACTIVE_RISK away from the equilibrium portfolio);
   - the turnover of each rebalancing can be limited (LN3 turnover management).
 """
 import numpy as np
@@ -58,27 +60,28 @@ def run_backtest(returns, rf, tickers, benchmark, gamma, c, views, start, end,
             pi = prior_returns(market_cov, rf.iloc[t - 1] * 12)
             bl_mu = posterior_returns(pi, cov, restrict_views(views, tickers))
             g = gamma_for_limits(bl_mu, cov, gamma, c, max_loss)  # same loss limit as on the portfolio page
-            targets, errors = build_portfolios(mu, cov, pi, g, c, views, N_SIM)
-            if errors:  # a method failed on this date: we stop and show its message
-                raise RuntimeError(list(errors.values())[0])
-            targets["Benchmark"] = benchmark
-
-            if not weights:  # first month: we buy everything with cash
-                new = targets
+            if not weights:  # first month: we buy every portfolio with cash
+                new, errors = build_portfolios(mu, cov, pi, g, c, views, N_SIM)
+                new["Benchmark"] = benchmark
             else:
+                # Black-Litterman (tilt of at most 2% from the equilibrium portfolio), resampled MV and risk parity:
+                # we compute the new target and move towards it
+                targets, errors = build_portfolios(mu, cov, pi, g, c, views, N_SIM,
+                                                   only=["Black-Litterman", "Resampled MV", "Risk parity (ERC)"])
                 limit = max_turnover
                 cost_in_optimisation = cost if cost_aware else 0.0
-                forecasts = {"Equilibrium": pi, "Minimum variance": 0 * mu, "Mean-variance": mu,
-                             "Black-Litterman": bl_mu}  # minimum variance = mean-variance with mu = 0
+                forecasts = {"Equilibrium": pi, "Minimum variance": 0 * mu, "Mean-variance": mu}  # min variance: mu = 0
                 new = {}
-                for name in targets:
+                for name in weights:
                     if name == "Benchmark":  # the benchmark always goes back to its weights
                         new[name] = benchmark
                     elif name in forecasts:  # mean-variance methods: LN3 problem with costs and turnover limit
                         new[name] = mean_variance_with_costs(forecasts[name], cov, g, c, weights[name].values,
                                                              cost_in_optimisation, limit)
-                    else:  # resampled MV and risk parity: move towards the new target
+                    elif name in targets:
                         new[name] = move_towards(weights[name], targets[name], limit)
+            if errors:  # a method failed on this date: we stop and show its message
+                raise RuntimeError(list(errors.values())[0])
             for name, w in new.items():
                 traded[name] = (w - weights[name]).abs().sum() if weights else 1.0
                 weights_history.setdefault(name, {})[date] = w
@@ -90,8 +93,9 @@ def run_backtest(returns, rf, tickers, benchmark, gamma, c, views, start, end,
         for name, w in weights.items():
             fee = 0.0 if name == "Benchmark" else MANAGEMENT_FEE / 12
             paid[name] = cost * traded.get(name, 0.0)  # only in the months when the portfolio trades
-            month[name] = r[w.index] @ w - paid[name] - fee  # return minus transaction costs and fee
-            weights[name] = w * (1 + r[w.index]) / (1 + r[w.index] @ w)  # the weights drift
+            r_w = r[w.index]
+            month[name] = r_w @ w - paid[name] - fee  # return minus transaction costs and fee
+            weights[name] = w * (1 + r_w) / (1 + r_w @ w)  # the weights drift
         results[date], costs_paid[date] = month, paid
 
     weights_history = {m: pd.DataFrame(h).T for m, h in weights_history.items()}

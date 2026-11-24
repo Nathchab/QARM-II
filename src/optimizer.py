@@ -74,8 +74,10 @@ def binding_limits(weights, c):
 
 
 def client_constraints(tickers, c, extra_variables=0):
-    """LN3 'asset class constraints' written as LinearConstraint (as in the labs)."""
-    return [LinearConstraint(row, lb=low, ub=high) for name, row, low, high in limits(tickers, c, extra_variables)]
+    """LN3 'asset class constraints' written as LinearConstraint (as in the labs): one matrix with a row per limit
+    (one LinearConstraint per limit gives the same result, but SLSQP is about twice slower)."""
+    names, rows, lows, highs = zip(*limits(tickers, c, extra_variables))
+    return [LinearConstraint(np.array(rows), lb=np.array(lows), ub=np.array(highs))]
 
 
 def weight_bounds(tickers, c):
@@ -265,7 +267,7 @@ def gamma_for(mu, cov, gamma, c, too_risky):
     low, high = gamma, 1000.0
     if risky(high):
         return high
-    for i in range(15):
+    for i in range(10):  # after 10 halvings (of log gamma) gamma is known within 1%: enough, and fast
         middle = np.sqrt(low * high)
         if risky(middle):
             low = middle
