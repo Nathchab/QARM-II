@@ -16,9 +16,15 @@ STEPS = 6
 
 
 def apply_style():
-    """A few touches the theme cannot set: less empty space at the top, steady button height."""
+    """A few touches the theme cannot set: less empty space at the top, steady button height, and a size that
+    follows the screen. Streamlit sizes text and spacing in rem (a multiple of the root font size), so on large
+    screens we raise the root font size: everything grows together instead of a small column in the middle."""
     st.markdown("""<style>
-        .block-container {padding-top: 2.5rem; max-width: 1200px;}
+        .block-container {padding-top: 2.5rem; max-width: 75rem;}
+        @media (min-width: 1800px) {html {font-size: 17.5px;}}
+        @media (min-width: 2200px) {html {font-size: 20px;}}
+        @media (min-width: 2800px) {html {font-size: 24px;}}
+        @media (min-width: 3400px) {html {font-size: 28px;}}
         button[kind="primary"], button[kind="secondary"] {min-height: 2.75rem;}
         [data-testid="stMetric"] {background: #f4f6f9; border-radius: 0.4rem; padding: 0.75rem 1rem;}
         [data-testid="stMetricLabel"] p {color: #5b6472;}
